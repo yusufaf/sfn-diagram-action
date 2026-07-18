@@ -61920,10 +61920,11 @@ function validateAsl(params) {
   const states = asl.States;
   const stateNames = Object.keys(states);
   if (stateNames.length === 0) throw new AslValidationError("States object cannot be empty");
-  if (!stateNames.includes(asl.StartAt)) throw new AslValidationError(`StartAt references non-existent state: "${asl.StartAt}". Available states: ${stateNames.join(", ")}`);
+  const stateNameSet = new Set(stateNames);
+  if (!stateNameSet.has(asl.StartAt)) throw new AslValidationError(`StartAt references non-existent state: "${asl.StartAt}". Available states: ${stateNames.join(", ")}`);
   for (const [stateName, stateValue] of Object.entries(states)) validateState({
     stateName,
-    stateNames,
+    stateNames: stateNameSet,
     stateValue
   });
 }
@@ -61936,22 +61937,22 @@ function validateState(params) {
   if (typeof stateType !== "string" || !VALID_STATE_TYPES.includes(stateType)) throw new AslValidationError(`State "${stateName}" has invalid Type: "${stateType}". Valid types: ${VALID_STATE_TYPES.join(", ")}`);
   if ("Next" in state2 && state2.Next !== void 0) {
     if (typeof state2.Next !== "string") throw new AslValidationError(`State "${stateName}": Next must be a string`);
-    if (!stateNames.includes(state2.Next)) throw new AslValidationError(`State "${stateName}": Next references non-existent state "${state2.Next}"`);
+    if (!stateNames.has(state2.Next)) throw new AslValidationError(`State "${stateName}": Next references non-existent state "${state2.Next}"`);
   }
   if ("Default" in state2 && state2.Default !== void 0) {
     if (typeof state2.Default !== "string") throw new AslValidationError(`State "${stateName}": Default must be a string`);
-    if (!stateNames.includes(state2.Default)) throw new AslValidationError(`State "${stateName}": Default references non-existent state "${state2.Default}"`);
+    if (!stateNames.has(state2.Default)) throw new AslValidationError(`State "${stateName}": Default references non-existent state "${state2.Default}"`);
   }
   if ("Choices" in state2 && Array.isArray(state2.Choices)) {
     for (const [index, choice] of state2.Choices.entries()) if (choice && typeof choice === "object" && "Next" in choice) {
       const choiceNext = choice.Next;
-      if (typeof choiceNext === "string" && !stateNames.includes(choiceNext)) throw new AslValidationError(`State "${stateName}": Choices[${index}].Next references non-existent state "${choiceNext}"`);
+      if (typeof choiceNext === "string" && !stateNames.has(choiceNext)) throw new AslValidationError(`State "${stateName}": Choices[${index}].Next references non-existent state "${choiceNext}"`);
     }
   }
   if ("Catch" in state2 && Array.isArray(state2.Catch)) {
     for (const [index, catchBlock] of state2.Catch.entries()) if (catchBlock && typeof catchBlock === "object" && "Next" in catchBlock) {
       const catchNext = catchBlock.Next;
-      if (typeof catchNext === "string" && !stateNames.includes(catchNext)) throw new AslValidationError(`State "${stateName}": Catch[${index}].Next references non-existent state "${catchNext}"`);
+      if (typeof catchNext === "string" && !stateNames.has(catchNext)) throw new AslValidationError(`State "${stateName}": Catch[${index}].Next references non-existent state "${catchNext}"`);
     }
   }
   if (!["Succeed", "Fail"].includes(stateType) && stateType !== "Choice") {
@@ -62306,6 +62307,44 @@ function extractNestedEdges(params) {
     }
   }
 }
+function applyCatchHandling(params) {
+  const { edges, mode, nodes, startStateId } = params;
+  if (mode === "show") return {
+    edges,
+    nodes
+  };
+  const keptEdges = edges.filter((edge) => edge.type !== "error");
+  let reachableIds;
+  if (startStateId !== void 0) {
+    const adjacency = /* @__PURE__ */ new Map();
+    for (const edge of keptEdges) {
+      const targets = adjacency.get(edge.from);
+      if (targets) targets.push(edge.to);
+      else adjacency.set(edge.from, [edge.to]);
+    }
+    reachableIds = /* @__PURE__ */ new Set([startStateId]);
+    const queue = [startStateId];
+    while (queue.length > 0) {
+      const currentId = queue.shift();
+      for (const targetId of adjacency.get(currentId) ?? []) if (!reachableIds.has(targetId)) {
+        reachableIds.add(targetId);
+        queue.push(targetId);
+      }
+    }
+  } else {
+    reachableIds = /* @__PURE__ */ new Set();
+    for (const edge of keptEdges) {
+      reachableIds.add(edge.from);
+      reachableIds.add(edge.to);
+    }
+  }
+  const survivingNodes = nodes.filter((node) => reachableIds.has(node.id));
+  const survivingIds = new Set(survivingNodes.map((node) => node.id));
+  return {
+    edges: keptEdges.filter((edge) => survivingIds.has(edge.from) && survivingIds.has(edge.to)),
+    nodes: survivingNodes
+  };
+}
 var DIFF_CLASS_DEFS = {
   added: "classDef diffAdded fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px",
   modified: "classDef diffModified fill:#fff9c4,stroke:#f57f17,stroke-width:2px",
@@ -62331,12 +62370,19 @@ var EXECUTION_CLASS_NAMES = {
   succeeded: "execSucceeded"
 };
 var MermaidRenderer = class {
+  /** Maps an original state id to its allocated, collision-safe Mermaid id. */
+  idMap = /* @__PURE__ */ new Map();
+  /** Set of Mermaid ids already handed out in the current render pass. */
+  usedIds = /* @__PURE__ */ new Set();
   /**
   * Render nodes and edges to Mermaid syntax
   */
   render(params) {
     const { asl, edges, executionClasses, nodeAnnotations, nodes, stateClasses } = params;
     const lines = [];
+    this.idMap = /* @__PURE__ */ new Map();
+    this.usedIds = /* @__PURE__ */ new Set();
+    nodes.forEach((node) => this.mermaidId(node.id));
     lines.push("stateDiagram-v2");
     lines.push("");
     const startState = this.findStartState({
@@ -62344,22 +62390,22 @@ var MermaidRenderer = class {
       edges,
       nodes
     });
-    if (startState) lines.push(`    [*] --> ${this.sanitizeId(startState)}`);
+    if (startState) lines.push(`    [*] --> ${this.mermaidId(startState)}`);
     const stateDefinitions = /* @__PURE__ */ new Set();
     nodes.forEach((node) => {
-      const id = this.sanitizeId(node.id);
+      const id = this.mermaidId(node.id);
       if (stateDefinitions.has(id)) return;
       const annotation = nodeAnnotations?.[node.id];
       const displayLabel = annotation ? `${node.label} (${annotation})` : node.label;
-      if (displayLabel !== node.id) {
+      if (displayLabel !== id) {
         lines.push(`    ${id}: ${this.escapeLabel(displayLabel)}`);
         stateDefinitions.add(id);
       }
     });
     if (stateDefinitions.size > 0) lines.push("");
     edges.forEach((edge) => {
-      const from = this.sanitizeId(edge.from);
-      const to = this.sanitizeId(edge.to);
+      const from = this.mermaidId(edge.from);
+      const to = this.mermaidId(edge.to);
       if (edge.label || edge.condition) {
         const label = this.escapeLabel(edge.condition || edge.label || "");
         lines.push(`    ${from} --> ${to}: ${label}`);
@@ -62369,7 +62415,7 @@ var MermaidRenderer = class {
     if (endStates.length > 0) {
       lines.push("");
       endStates.forEach((node) => {
-        const id = this.sanitizeId(node.id);
+        const id = this.mermaidId(node.id);
         lines.push(`    ${id} --> [*]`);
       });
     }
@@ -62382,7 +62428,7 @@ var MermaidRenderer = class {
     if (executionClasses && Object.keys(executionClasses).length > 0) for (const status of Object.keys(EXECUTION_CLASS_DEFS)) lines.push(`    ${EXECUTION_CLASS_DEFS[status]}`);
     lines.push("");
     nodes.forEach((node) => {
-      const id = this.sanitizeId(node.id);
+      const id = this.mermaidId(node.id);
       const executionStatus = executionClasses?.[node.id];
       if (executionStatus) {
         lines.push(`    class ${id} ${EXECUTION_CLASS_NAMES[executionStatus]}`);
@@ -62417,10 +62463,24 @@ var MermaidRenderer = class {
     };
   }
   /**
-  * Sanitize state ID for Mermaid (no spaces, special chars)
+  * Resolve an original state id to a collision-safe Mermaid id.
+  *
+  * Sanitizes the id (non-`[a-zA-Z0-9_]` chars become `_`) and guarantees
+  * uniqueness within a render: if the sanitized base is already taken by a
+  * different original id, a numeric suffix (`_2`, `_3`, …) is appended.
+  * Results are cached per original id so every reference (node definition,
+  * edge endpoint, class assignment) resolves to the same id.
   */
-  sanitizeId(id) {
-    return id.replace(/[^a-zA-Z0-9_]/g, "_");
+  mermaidId(originalId) {
+    const cached = this.idMap.get(originalId);
+    if (cached) return cached;
+    const base = originalId.replace(/[^a-zA-Z0-9_]/g, "_") || "state";
+    let candidate = base;
+    let counter = 2;
+    while (this.usedIds.has(candidate)) candidate = `${base}_${counter++}`;
+    this.usedIds.add(candidate);
+    this.idMap.set(originalId, candidate);
+    return candidate;
   }
   /**
   * Escape label text for Mermaid
@@ -62453,6 +62513,7 @@ var DEFAULT_DIAGRAM_OPTIONS = {
   includeComments: true,
   showStateTypes: false,
   edgeStyle: "curved",
+  catchHandling: "show",
   catchLabelStyle: "error-type",
   stylePreset: "aws-standard",
   iconPosition: "left",
@@ -62779,13 +62840,20 @@ function generateMermaidExecution(params) {
 function generateMermaid(params) {
   const { aslDefinition, ...options } = params;
   const aslObj = typeof aslDefinition === "string" ? JSON.parse(aslDefinition) : aslDefinition;
+  const mergedOptions = mergeOptions(options);
   const { nodes, edges } = parseAsl({
     definition: aslObj,
-    options: mergeOptions(options)
+    options: mergedOptions
+  });
+  const graph = applyCatchHandling({
+    edges,
+    mode: mergedOptions.catchHandling,
+    nodes,
+    startStateId: aslObj.StartAt
   });
   return new MermaidRenderer().render({
-    nodes,
-    edges,
+    nodes: graph.nodes,
+    edges: graph.edges,
     asl: aslObj
   });
 }
