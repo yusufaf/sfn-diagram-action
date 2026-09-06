@@ -54447,7 +54447,7 @@ var require_dist_cjs53 = __commonJS({
       extensions.forEach((extension) => extension.configure(extensionConfiguration));
       return Object.assign(runtimeConfig2, regionConfigResolver.resolveAwsRegionExtensionConfiguration(extensionConfiguration), smithyClient.resolveDefaultRuntimeConfig(extensionConfiguration), protocolHttp.resolveHttpHandlerRuntimeConfig(extensionConfiguration), resolveHttpAuthRuntimeConfig5(extensionConfiguration));
     };
-    var SFNClient2 = class extends smithyClient.Client {
+    var SFNClient = class extends smithyClient.Client {
       config;
       constructor(...[configuration]) {
         const _config_0 = runtimeConfig.getRuntimeConfig(configuration || {});
@@ -54545,7 +54545,7 @@ var require_dist_cjs53 = __commonJS({
       return [middlewareEndpoint.getEndpointPlugin(config, Command.getEndpointParameterInstructions())];
     }).s("AWSStepFunctions", "ListActivities", {}).n("SFNClient", "ListActivitiesCommand").sc(schemas_0.ListActivities$).build() {
     };
-    var ListExecutionsCommand2 = class extends smithyClient.Command.classBuilder().ep(commonParams5).m(function(Command, cs, config, o5) {
+    var ListExecutionsCommand = class extends smithyClient.Command.classBuilder().ep(commonParams5).m(function(Command, cs, config, o5) {
       return [middlewareEndpoint.getEndpointPlugin(config, Command.getEndpointParameterInstructions())];
     }).s("AWSStepFunctions", "ListExecutions", {}).n("SFNClient", "ListExecutionsCommand").sc(schemas_0.ListExecutions$).build() {
     };
@@ -54629,11 +54629,11 @@ var require_dist_cjs53 = __commonJS({
       return [middlewareEndpoint.getEndpointPlugin(config, Command.getEndpointParameterInstructions())];
     }).s("AWSStepFunctions", "ValidateStateMachineDefinition", {}).n("SFNClient", "ValidateStateMachineDefinitionCommand").sc(schemas_0.ValidateStateMachineDefinition$).build() {
     };
-    var paginateGetExecutionHistory = core3.createPaginator(SFNClient2, GetExecutionHistoryCommand2, "nextToken", "nextToken", "maxResults");
-    var paginateListActivities = core3.createPaginator(SFNClient2, ListActivitiesCommand, "nextToken", "nextToken", "maxResults");
-    var paginateListExecutions = core3.createPaginator(SFNClient2, ListExecutionsCommand2, "nextToken", "nextToken", "maxResults");
-    var paginateListMapRuns = core3.createPaginator(SFNClient2, ListMapRunsCommand, "nextToken", "nextToken", "maxResults");
-    var paginateListStateMachines = core3.createPaginator(SFNClient2, ListStateMachinesCommand, "nextToken", "nextToken", "maxResults");
+    var paginateGetExecutionHistory = core3.createPaginator(SFNClient, GetExecutionHistoryCommand2, "nextToken", "nextToken", "maxResults");
+    var paginateListActivities = core3.createPaginator(SFNClient, ListActivitiesCommand, "nextToken", "nextToken", "maxResults");
+    var paginateListExecutions = core3.createPaginator(SFNClient, ListExecutionsCommand, "nextToken", "nextToken", "maxResults");
+    var paginateListMapRuns = core3.createPaginator(SFNClient, ListMapRunsCommand, "nextToken", "nextToken", "maxResults");
+    var paginateListStateMachines = core3.createPaginator(SFNClient, ListStateMachinesCommand, "nextToken", "nextToken", "maxResults");
     var commands5 = {
       CreateActivityCommand,
       CreateStateMachineCommand,
@@ -54651,7 +54651,7 @@ var require_dist_cjs53 = __commonJS({
       GetActivityTaskCommand,
       GetExecutionHistoryCommand: GetExecutionHistoryCommand2,
       ListActivitiesCommand,
-      ListExecutionsCommand: ListExecutionsCommand2,
+      ListExecutionsCommand,
       ListMapRunsCommand,
       ListStateMachineAliasesCommand,
       ListStateMachinesCommand,
@@ -54680,7 +54680,7 @@ var require_dist_cjs53 = __commonJS({
       paginateListMapRuns,
       paginateListStateMachines
     };
-    var SFN = class extends SFNClient2 {
+    var SFN = class extends SFNClient {
     };
     smithyClient.createAggregatedClient(commands5, SFN, { paginators });
     var EncryptionType = {
@@ -54861,7 +54861,7 @@ var require_dist_cjs53 = __commonJS({
     exports2.InspectionLevel = InspectionLevel;
     exports2.KmsKeyState = KmsKeyState;
     exports2.ListActivitiesCommand = ListActivitiesCommand;
-    exports2.ListExecutionsCommand = ListExecutionsCommand2;
+    exports2.ListExecutionsCommand = ListExecutionsCommand;
     exports2.ListMapRunsCommand = ListMapRunsCommand;
     exports2.ListStateMachineAliasesCommand = ListStateMachineAliasesCommand;
     exports2.ListStateMachineVersionsCommand = ListStateMachineVersionsCommand;
@@ -54873,7 +54873,7 @@ var require_dist_cjs53 = __commonJS({
     exports2.PublishStateMachineVersionCommand = PublishStateMachineVersionCommand;
     exports2.RedriveExecutionCommand = RedriveExecutionCommand;
     exports2.SFN = SFN;
-    exports2.SFNClient = SFNClient2;
+    exports2.SFNClient = SFNClient;
     exports2.SendTaskFailureCommand = SendTaskFailureCommand;
     exports2.SendTaskHeartbeatCommand = SendTaskHeartbeatCommand;
     exports2.SendTaskSuccessCommand = SendTaskSuccessCommand;
@@ -54913,6 +54913,34 @@ var require_dist_cjs53 = __commonJS({
     Object.keys(errors).forEach(function(k5) {
       if (k5 !== "default" && !Object.prototype.hasOwnProperty.call(exports2, k5)) exports2[k5] = errors[k5];
     });
+  }
+});
+
+// ../../dist/aws.js
+var aws_exports = {};
+__export(aws_exports, {
+  fetchExecutionHistory: () => fetchExecutionHistory
+});
+async function fetchExecutionHistory(params) {
+  const { client, executionArn, maxResults = 1e3 } = params;
+  const events = [];
+  let nextToken;
+  do {
+    const page = await client.send(new import_client_sfn.GetExecutionHistoryCommand({
+      executionArn,
+      maxResults,
+      nextToken
+    }));
+    events.push(...page.events ?? []);
+    nextToken = page.nextToken;
+  } while (nextToken);
+  return events;
+}
+var import_client_sfn;
+var init_aws = __esm({
+  "../../dist/aws.js"() {
+    "use strict";
+    import_client_sfn = __toESM(require_dist_cjs53(), 1);
   }
 });
 
@@ -62262,7 +62290,7 @@ var Si = v((mo, Dt) => {
 });
 var dagre_esm_default = Si();
 
-// ../../dist/index.js
+// ../../dist/ci.js
 var DEFAULT_DIAGRAM_OPTIONS = {
   format: "svg",
   theme: "light",
@@ -62279,6 +62307,7 @@ var DEFAULT_DIAGRAM_OPTIONS = {
   showStateTypes: false,
   showVariables: true,
   edgeStyle: "curved",
+  edgeHitAreas: false,
   catchHandling: "show",
   catchLabelStyle: "error-type",
   collapse: void 0,
@@ -62388,6 +62417,9 @@ function getStrokeWidthForType(stateType) {
       return 2;
   }
 }
+function stripJsonataDelimiters(expression) {
+  return expression.replace(/^\{%\s*/, "").replace(/\s*%\}$/, "").trim();
+}
 var EDGE_LABELS = {
   BRANCH_PREFIX: "Branch",
   CATCH_PREFIX: "Catch",
@@ -62418,14 +62450,56 @@ function getAssignedVariablesLabel(variableNames) {
   const remaining = variableNames.length - shown.length;
   return remaining > 0 ? `${label} +${remaining} more` : label;
 }
-function getContainerSubLabel(params) {
+var MAX_SUB_LABEL_EXPRESSION = 32;
+function elide(text) {
+  return text.length > MAX_SUB_LABEL_EXPRESSION ? `${text.slice(0, MAX_SUB_LABEL_EXPRESSION - 1)}\u2026` : text;
+}
+var SUB_LABEL_SEPARATOR = " \xB7 ";
+function getWaitDurationLabel(state2) {
+  if (typeof state2.Seconds === "number") return `${state2.Seconds}s`;
+  if (typeof state2.Seconds === "string") return elide(stripJsonataDelimiters(state2.Seconds));
+  if (state2.SecondsPath !== void 0) return elide(state2.SecondsPath);
+  if (state2.Timestamp !== void 0) return elide(stripJsonataDelimiters(state2.Timestamp));
+  if (state2.TimestampPath !== void 0) return elide(state2.TimestampPath);
+  return "";
+}
+function getToleratedFailureLabel(state2) {
+  const parts = [];
+  const count = state2.ToleratedFailureCount;
+  const percentage = state2.ToleratedFailurePercentage;
+  if (typeof count === "number") parts.push(`${count} failure${count === 1 ? "" : "s"}`);
+  else if (typeof count === "string") parts.push(`${elide(stripJsonataDelimiters(count))} failures`);
+  if (typeof percentage === "number") parts.push(`${percentage}%`);
+  else if (typeof percentage === "string") parts.push(`${elide(stripJsonataDelimiters(percentage))}%`);
+  return parts.length > 0 ? `tolerate ${parts.join(" or ")}` : "";
+}
+var BYTES_PER_KIB = 1024;
+function getItemBatchingLabel(state2) {
+  const batcher = state2.ItemBatcher;
+  if (!batcher) return "";
+  const parts = [];
+  const maxItems = batcher.MaxItemsPerBatch;
+  const maxBytes = batcher.MaxInputBytesPerBatch;
+  if (typeof maxItems === "number") parts.push(`of ${maxItems}`);
+  else if (batcher.MaxItemsPerBatchPath !== void 0) parts.push(`of ${elide(batcher.MaxItemsPerBatchPath)}`);
+  if (typeof maxBytes === "number") parts.push(maxBytes < BYTES_PER_KIB ? `\u2264 ${maxBytes}B` : `\u2264 ${Math.round(maxBytes / BYTES_PER_KIB)}KB`);
+  else if (batcher.MaxInputBytesPerBatchPath !== void 0) parts.push(`\u2264 ${elide(batcher.MaxInputBytesPerBatchPath)}`);
+  return parts.length > 0 ? `batches ${parts.join(", ")}` : "";
+}
+function getNodeSubLabel(params) {
+  return getNodeSubLabelParts(params).join(SUB_LABEL_SEPARATOR);
+}
+function getNodeSubLabelParts(params) {
   const { node, showStateType } = params;
   const parts = [];
   if (node.collapsed && node.collapsedCount !== void 0) parts.push(`${node.collapsedCount} state${node.collapsedCount === 1 ? "" : "s"}`);
-  if (showStateType) parts.push(`${node.type} state`);
+  if (showStateType) parts.push(node.isContainer ? `${node.type} state` : node.type);
   if (node.isDistributedMap) parts.push("Distributed");
   if (node.maxConcurrency !== void 0) parts.push(`max ${node.maxConcurrency}`);
-  return parts.join(" \xB7 ");
+  if (node.toleratedFailure !== void 0) parts.push(node.toleratedFailure);
+  if (node.itemBatching !== void 0) parts.push(node.itemBatching);
+  if (node.waitDuration !== void 0) parts.push(node.waitDuration);
+  return parts;
 }
 function getCatchLabel(params) {
   const { catchLabelStyle = "error-type", errorTypes, index } = params;
@@ -62662,6 +62736,9 @@ function applyCatchHandling(params) {
     nodes: survivingNodes
   };
 }
+function getMapProcessor(state2) {
+  return state2.ItemProcessor ?? state2.Iterator;
+}
 function assignEdgeIds(params) {
   const { edges } = params;
   const ordinals = /* @__PURE__ */ new Map();
@@ -62675,6 +62752,110 @@ function assignEdgeIds(params) {
       id: `${pairKey}#${ordinal}`
     };
   });
+}
+var SCOPE_SEPARATOR = "__";
+function assignmentKey(scope, name) {
+  return `${scope}\0${name}`;
+}
+function branchEndMarkerId(containerId, branchIndex) {
+  return `${containerId}${SCOPE_SEPARATOR}branch${branchIndex}${SCOPE_SEPARATOR}end`;
+}
+function iteratorEndMarkerId(containerId) {
+  return `${containerId}${SCOPE_SEPARATOR}iterator${SCOPE_SEPARATOR}end`;
+}
+var ITEM_READER_ID_SUFFIX = `${SCOPE_SEPARATOR}itemreader`;
+var RESULT_WRITER_ID_SUFFIX = `${SCOPE_SEPARATOR}resultwriter`;
+function reservedIdsFor(id, definition, name) {
+  const state2 = definition.States[name];
+  const reserved = [];
+  if (state2.Type === "Parallel" && Array.isArray(state2.Branches)) state2.Branches.forEach((_2, index) => reserved.push(branchEndMarkerId(id, index)));
+  if (state2.Type === "Map") {
+    if (getMapProcessor(state2) !== void 0) reserved.push(iteratorEndMarkerId(id));
+    if (state2.ItemReader?.Resource) reserved.push(`${id}${ITEM_READER_ID_SUFFIX}`);
+    if (state2.ResultWriter?.Resource) reserved.push(`${id}${RESULT_WRITER_ID_SUFFIX}`);
+  }
+  return reserved;
+}
+function buildIdResolver(params) {
+  const { definition } = params;
+  const scopesByName = /* @__PURE__ */ new Map();
+  const walk = (current, path2) => {
+    const scopeKey = JSON.stringify(path2);
+    for (const [name, state2] of Object.entries(current.States)) {
+      const scopes = scopesByName.get(name) ?? /* @__PURE__ */ new Set();
+      scopes.add(scopeKey);
+      scopesByName.set(name, scopes);
+      if (state2.Type === "Parallel" && Array.isArray(state2.Branches)) state2.Branches.forEach((branch, index) => walk(branch, [
+        ...path2,
+        name,
+        `branch${index}`
+      ]));
+      if (state2.Type === "Map") {
+        const processor = getMapProcessor(state2);
+        if (processor) walk(processor, [
+          ...path2,
+          name,
+          "iterator"
+        ]);
+      }
+    }
+  };
+  walk(definition, []);
+  const assigned = /* @__PURE__ */ new Map();
+  const idsByName = /* @__PURE__ */ new Map();
+  const taken = /* @__PURE__ */ new Set();
+  let frontier = [{
+    definition,
+    scope: ""
+  }];
+  while (frontier.length > 0) {
+    const next = [];
+    for (const frame of frontier) {
+      const assign = (name) => {
+        const candidate = (scopesByName.get(name)?.size ?? 1) > 1 && frame.scope !== "" ? `${frame.scope}${SCOPE_SEPARATOR}${name}` : name;
+        let id = candidate;
+        for (let suffix = 2; taken.has(id); suffix++) id = `${candidate}${SCOPE_SEPARATOR}${suffix}`;
+        assigned.set(assignmentKey(frame.scope, name), id);
+        idsByName.set(name, [...idsByName.get(name) ?? [], id]);
+        taken.add(id);
+        return id;
+      };
+      const names = Object.keys(frame.definition.States);
+      const isContainer = (name) => {
+        const type = frame.definition.States[name].Type;
+        return type === "Parallel" || type === "Map";
+      };
+      for (const name of names.filter(isContainer)) {
+        const id = assign(name);
+        for (const reserved of reservedIdsFor(id, frame.definition, name)) taken.add(reserved);
+      }
+      for (const name of names.filter((candidate) => !isContainer(candidate))) assign(name);
+      for (const [name, state2] of Object.entries(frame.definition.States)) {
+        const containerId = assigned.get(assignmentKey(frame.scope, name));
+        if (state2.Type === "Parallel" && Array.isArray(state2.Branches)) state2.Branches.forEach((branch, index) => next.push({
+          definition: branch,
+          scope: `${containerId}__branch${index}`
+        }));
+        if (state2.Type === "Map") {
+          const processor = getMapProcessor(state2);
+          if (processor) next.push({
+            definition: processor,
+            scope: `${containerId}__iterator`
+          });
+        }
+      }
+    }
+    frontier = next;
+  }
+  return {
+    branchScope: (scope, containerName, index) => `${resolveIn(scope, containerName)}__branch${index}`,
+    idsForName: (name) => idsByName.get(name) ?? [],
+    processorScope: (scope, containerName) => `${resolveIn(scope, containerName)}__iterator`,
+    resolve: resolveIn
+  };
+  function resolveIn(scope, name) {
+    return assigned.get(assignmentKey(scope, name)) ?? name;
+  }
 }
 var AslValidationError = class extends Error {
   constructor(message) {
@@ -62692,56 +62873,89 @@ var VALID_STATE_TYPES = [
   "Parallel",
   "Map"
 ];
-function validateAsl(params) {
-  const { definition } = params;
-  if (!definition || typeof definition !== "object") throw new AslValidationError("ASL definition must be a non-null object");
+function validateScope(params) {
+  const { definition, scope } = params;
+  const isRoot = scope === "";
+  const subject = isRoot ? "ASL definition" : scope;
+  const qualify = (text) => isRoot ? text : `${scope}: ${text}`;
+  const nest = (label) => isRoot ? label : `${scope} > ${label}`;
+  if (!definition || typeof definition !== "object") throw new AslValidationError(`${subject} must be a non-null object`);
   const asl = definition;
-  if (!("StartAt" in asl)) throw new AslValidationError("ASL definition missing required field: StartAt");
-  if (typeof asl.StartAt !== "string" || asl.StartAt.trim() === "") throw new AslValidationError("StartAt must be a non-empty string");
-  if (!("States" in asl)) throw new AslValidationError("ASL definition missing required field: States");
-  if (!asl.States || typeof asl.States !== "object") throw new AslValidationError("States must be a non-null object");
+  if (!("StartAt" in asl)) throw new AslValidationError(`${subject} missing required field: StartAt`);
+  if (typeof asl.StartAt !== "string" || asl.StartAt.trim() === "") throw new AslValidationError(qualify("StartAt must be a non-empty string"));
+  if (!("States" in asl)) throw new AslValidationError(`${subject} missing required field: States`);
+  if (!asl.States || typeof asl.States !== "object") throw new AslValidationError(qualify("States must be a non-null object"));
   const states = asl.States;
   const stateNames = Object.keys(states);
-  if (stateNames.length === 0) throw new AslValidationError("States object cannot be empty");
+  if (stateNames.length === 0) throw new AslValidationError(qualify("States object cannot be empty"));
   const stateNameSet = new Set(stateNames);
-  if (!stateNameSet.has(asl.StartAt)) throw new AslValidationError(`StartAt references non-existent state: "${asl.StartAt}". Available states: ${stateNames.join(", ")}`);
+  if (!stateNameSet.has(asl.StartAt)) throw new AslValidationError(qualify(`StartAt references non-existent state: "${asl.StartAt}". Available states: ${stateNames.join(", ")}`));
   for (const [stateName, stateValue] of Object.entries(states)) validateState({
+    scope,
     stateName,
     stateNames: stateNameSet,
     stateValue
   });
+  for (const [stateName, stateValue] of Object.entries(states)) {
+    const state2 = stateValue;
+    if (state2.Type === "Parallel" && state2.Branches !== void 0) {
+      if (!Array.isArray(state2.Branches)) throw new AslValidationError(qualify(`State "${stateName}": Branches must be an array`));
+      state2.Branches.forEach((branch, index) => {
+        validateScope({
+          definition: branch,
+          scope: nest(`Parallel state "${stateName}" branch ${index + 1}`)
+        });
+      });
+    }
+    if (state2.Type === "Map") {
+      const processor = getMapProcessor(state2);
+      if (processor !== void 0) validateScope({
+        definition: processor,
+        scope: nest(`Map state "${stateName}" processor`)
+      });
+    }
+  }
+}
+function validateAsl(params) {
+  validateScope({
+    definition: params.definition,
+    scope: ""
+  });
 }
 function validateState(params) {
-  const { stateName, stateNames, stateValue } = params;
-  if (!stateValue || typeof stateValue !== "object") throw new AslValidationError(`State "${stateName}" must be a non-null object`);
+  const { scope, stateName, stateNames, stateValue } = params;
+  const fail = (text) => {
+    throw new AslValidationError(scope === "" ? text : `${scope}: ${text}`);
+  };
+  if (!stateValue || typeof stateValue !== "object") fail(`State "${stateName}" must be a non-null object`);
   const state2 = stateValue;
-  if (!("Type" in state2)) throw new AslValidationError(`State "${stateName}" missing required field: Type`);
+  if (!("Type" in state2)) fail(`State "${stateName}" missing required field: Type`);
   const stateType = state2.Type;
-  if (typeof stateType !== "string" || !VALID_STATE_TYPES.includes(stateType)) throw new AslValidationError(`State "${stateName}" has invalid Type: "${stateType}". Valid types: ${VALID_STATE_TYPES.join(", ")}`);
+  if (typeof stateType !== "string" || !VALID_STATE_TYPES.includes(stateType)) fail(`State "${stateName}" has invalid Type: "${stateType}". Valid types: ${VALID_STATE_TYPES.join(", ")}`);
   if ("Next" in state2 && state2.Next !== void 0) {
-    if (typeof state2.Next !== "string") throw new AslValidationError(`State "${stateName}": Next must be a string`);
-    if (!stateNames.has(state2.Next)) throw new AslValidationError(`State "${stateName}": Next references non-existent state "${state2.Next}"`);
+    if (typeof state2.Next !== "string") fail(`State "${stateName}": Next must be a string`);
+    if (!stateNames.has(state2.Next)) fail(`State "${stateName}": Next references non-existent state "${state2.Next}"`);
   }
   if ("Default" in state2 && state2.Default !== void 0) {
-    if (typeof state2.Default !== "string") throw new AslValidationError(`State "${stateName}": Default must be a string`);
-    if (!stateNames.has(state2.Default)) throw new AslValidationError(`State "${stateName}": Default references non-existent state "${state2.Default}"`);
+    if (typeof state2.Default !== "string") fail(`State "${stateName}": Default must be a string`);
+    if (!stateNames.has(state2.Default)) fail(`State "${stateName}": Default references non-existent state "${state2.Default}"`);
   }
   if ("Choices" in state2 && Array.isArray(state2.Choices)) {
     for (const [index, choice] of state2.Choices.entries()) if (choice && typeof choice === "object" && "Next" in choice) {
       const choiceNext = choice.Next;
-      if (typeof choiceNext === "string" && !stateNames.has(choiceNext)) throw new AslValidationError(`State "${stateName}": Choices[${index}].Next references non-existent state "${choiceNext}"`);
+      if (typeof choiceNext === "string" && !stateNames.has(choiceNext)) fail(`State "${stateName}": Choices[${index}].Next references non-existent state "${choiceNext}"`);
     }
   }
   if ("Catch" in state2 && Array.isArray(state2.Catch)) {
     for (const [index, catchBlock] of state2.Catch.entries()) if (catchBlock && typeof catchBlock === "object" && "Next" in catchBlock) {
       const catchNext = catchBlock.Next;
-      if (typeof catchNext === "string" && !stateNames.has(catchNext)) throw new AslValidationError(`State "${stateName}": Catch[${index}].Next references non-existent state "${catchNext}"`);
+      if (typeof catchNext === "string" && !stateNames.has(catchNext)) fail(`State "${stateName}": Catch[${index}].Next references non-existent state "${catchNext}"`);
     }
   }
   if (!["Succeed", "Fail"].includes(stateType) && stateType !== "Choice") {
     const hasNext = "Next" in state2;
     const hasEnd = "End" in state2 && state2.End === true;
-    if (!hasNext && !hasEnd) throw new AslValidationError(`State "${stateName}" (Type: ${stateType}) must have either "Next" or "End: true"`);
+    if (!hasNext && !hasEnd) fail(`State "${stateName}" (Type: ${stateType}) must have either "Next" or "End: true"`);
   }
 }
 function parseAsl(params) {
@@ -62749,15 +62963,20 @@ function parseAsl(params) {
   const nodes = [];
   const edges = [];
   validateAsl({ definition });
+  const nodeIndex = /* @__PURE__ */ new Map();
+  const resolver = buildIdResolver({ definition });
   extractStatesRecursively({
     definition,
-    nodeIndex: /* @__PURE__ */ new Map(),
+    nodeIndex,
     nodes,
-    options
+    options,
+    resolver,
+    scope: ""
   });
   for (const [stateName, state2] of Object.entries(definition.States)) {
     const stateEdges = extractEdgesFromState({
       catchLabelStyle: options?.catchLabelStyle,
+      resolveId: (name) => resolver.resolve("", name),
       state: state2,
       stateName
     });
@@ -62766,7 +62985,9 @@ function parseAsl(params) {
   extractNestedEdges({
     definition,
     edges,
-    options
+    options,
+    resolver,
+    scope: ""
   });
   return {
     edges: assignEdgeIds({ edges }),
@@ -62774,10 +62995,10 @@ function parseAsl(params) {
   };
 }
 function createStateNode(params) {
-  const { name, options, state: state2, stylePreset } = params;
+  const { id, name, options, state: state2, stylePreset } = params;
   const isContainer = state2.Type === "Parallel" || state2.Type === "Map";
   const baseNode = {
-    id: name,
+    id,
     isContainer,
     label: options?.includeComments !== false ? state2.Comment || name : name,
     style: getNodeStyle({
@@ -62788,11 +63009,19 @@ function createStateNode(params) {
   };
   const assignedVariables = Object.keys(state2.Assign ?? {});
   if (assignedVariables.length > 0) baseNode.assignedVariables = assignedVariables;
+  if (state2.Type === "Wait") {
+    const waitDuration = getWaitDurationLabel(state2);
+    if (waitDuration !== "") baseNode.waitDuration = waitDuration;
+  }
   if (isContainer) {
     baseNode.children = [];
     if (state2.Type === "Map") {
       if (getMapProcessor(state2)?.ProcessorConfig?.Mode === "DISTRIBUTED") baseNode.isDistributedMap = true;
       if (state2.MaxConcurrency !== void 0) baseNode.maxConcurrency = state2.MaxConcurrency;
+      const toleratedFailure = getToleratedFailureLabel(state2);
+      if (toleratedFailure !== "") baseNode.toleratedFailure = toleratedFailure;
+      const itemBatching = getItemBatchingLabel(state2);
+      if (itemBatching !== "") baseNode.itemBatching = itemBatching;
     }
   }
   if (options?.showIcons && state2.Type === "Task") {
@@ -62808,17 +63037,18 @@ function createStateNode(params) {
   return baseNode;
 }
 function extractEdgesFromState(params) {
-  const { catchLabelStyle, state: state2, stateName } = params;
+  const { catchLabelStyle, resolveId, state: state2, stateName } = params;
   const edges = [];
+  const stateId = resolveId(stateName);
   if (state2.Type === "Map") for (const io of ITEM_IO_ROLES) {
     if (!state2[io.field]?.Resource) continue;
-    const satelliteId = `${stateName}${io.idSuffix}`;
+    const satelliteId = `${stateId}${io.idSuffix}`;
     edges.push(io.edgeDirection === "in" ? {
       from: satelliteId,
       label: io.label,
-      to: stateName
+      to: stateId
     } : {
-      from: stateName,
+      from: stateId,
       label: io.label,
       to: satelliteId
     });
@@ -62829,17 +63059,17 @@ function extractEdgesFromState(params) {
         const condition = extractConditionLabel(choice);
         edges.push({
           condition,
-          from: stateName,
+          from: stateId,
           label: condition,
-          to: choice.Next,
+          to: resolveId(choice.Next),
           type: "choice"
         });
       });
       if (state2.Default) {
         if (!(state2.Choices?.map((choice) => choice.Next) || []).includes(state2.Default)) edges.push({
-          from: stateName,
+          from: stateId,
           label: EDGE_LABELS.DEFAULT,
-          to: state2.Default,
+          to: resolveId(state2.Default),
           type: "default"
         });
       }
@@ -62850,28 +63080,28 @@ function extractEdgesFromState(params) {
       break;
     default:
       if (state2.Next) edges.push({
-        from: stateName,
-        to: state2.Next,
+        from: stateId,
+        to: resolveId(state2.Next),
         type: "normal"
       });
       break;
   }
   if (state2.Retry && state2.Retry.length > 0) edges.push({
-    from: stateName,
+    from: stateId,
     label: getRetryLabel(state2.Retry),
-    to: stateName,
+    to: stateId,
     type: "retry",
     visualOnly: true
   });
   if (state2.Catch) state2.Catch.forEach((catchBlock, index) => {
     if (catchBlock.Next) edges.push({
-      from: stateName,
+      from: stateId,
       label: getCatchLabel({
         catchLabelStyle,
         errorTypes: catchBlock.ErrorEquals,
         index
       }),
-      to: catchBlock.Next,
+      to: resolveId(catchBlock.Next),
       type: "error"
     });
   });
@@ -62899,9 +63129,6 @@ var IS_CHECKS = {
   IsString: "is string",
   IsTimestamp: "is timestamp"
 };
-function cleanJsonataExpression(expression) {
-  return expression.replace(/^\{%\s*/, "").replace(/\s*%\}$/, "").trim();
-}
 function formatComparison(variable, operatorKey, value) {
   const isCheckPhrase = IS_CHECKS[operatorKey];
   if (isCheckPhrase) return value === false ? `${variable} ${isCheckPhrase.replace("is ", "is not ")}` : `${variable} ${isCheckPhrase}`;
@@ -62916,7 +63143,7 @@ function formatComparison(variable, operatorKey, value) {
   return `${variable} ${operator[1]} ${formattedValue}`;
 }
 function describeChoiceRule(rule) {
-  if (rule.Condition !== void 0) return typeof rule.Condition === "string" ? cleanJsonataExpression(rule.Condition) : String(rule.Condition);
+  if (rule.Condition !== void 0) return typeof rule.Condition === "string" ? stripJsonataDelimiters(rule.Condition) : String(rule.Condition);
   if (Array.isArray(rule.And)) {
     const parts = rule.And.map(describeChoiceRule).filter(Boolean);
     return parts.length > 0 ? parts.join(" AND ") : "";
@@ -62939,26 +63166,24 @@ function describeChoiceRule(rule) {
 function extractConditionLabel(choice) {
   return describeChoiceRule(choice) || EDGE_LABELS.CONDITION_FALLBACK;
 }
-function getMapProcessor(state2) {
-  return state2.ItemProcessor ?? state2.Iterator;
-}
 var ITEM_IO_ROLES = [{
   edgeDirection: "in",
   field: "ItemReader",
-  idSuffix: "__itemreader",
+  idSuffix: ITEM_READER_ID_SUFFIX,
   label: "ItemReader",
   nodeType: "ItemReader"
 }, {
   edgeDirection: "out",
   field: "ResultWriter",
-  idSuffix: "__resultwriter",
+  idSuffix: RESULT_WRITER_ID_SUFFIX,
   label: "ResultWriter",
   nodeType: "ResultWriter"
 }];
 function extractStatesRecursively(params) {
-  const { definition, nodeIndex, nodes, options } = params;
+  const { definition, nodeIndex, nodes, options, resolver, scope } = params;
   for (const [stateName, state2] of Object.entries(definition.States)) {
     const stateNode = createStateNode({
+      id: resolver.resolve(scope, stateName),
       name: stateName,
       options,
       state: state2,
@@ -62967,14 +63192,18 @@ function extractStatesRecursively(params) {
     nodes.push(stateNode);
     nodeIndex.set(stateNode.id, stateNode);
     if (state2.Type === "Parallel" && state2.Branches) state2.Branches.forEach((branch, index) => {
+      const branchScope = resolver.branchScope(scope, stateName, index);
       extractStatesRecursively({
         definition: branch,
         nodeIndex,
         nodes,
-        options
+        options,
+        resolver,
+        scope: branchScope
       });
-      if (nodeIndex.get(branch.StartAt)) stateNode.children?.push(branch.StartAt);
-      const endNodeId = `${stateName}__branch${index}__end`;
+      const branchStartId = resolver.resolve(branchScope, branch.StartAt);
+      if (nodeIndex.get(branchStartId)) stateNode.children?.push(branchStartId);
+      const endNodeId = branchEndMarkerId(stateNode.id, index);
       const endNode = {
         id: endNodeId,
         isContainer: false,
@@ -62993,20 +63222,26 @@ function extractStatesRecursively(params) {
       markBranchStatesAsChildren({
         branch,
         containerNode: stateNode,
-        nodeIndex
+        nodeIndex,
+        resolver,
+        scope: branchScope
       });
     });
     const mapProcessor = state2.Type === "Map" ? getMapProcessor(state2) : void 0;
     if (state2.Type === "Map" && mapProcessor) {
       const iterator2 = mapProcessor;
+      const processorScope = resolver.processorScope(scope, stateName);
       extractStatesRecursively({
         definition: iterator2,
         nodeIndex,
         nodes,
-        options
+        options,
+        resolver,
+        scope: processorScope
       });
-      if (nodeIndex.get(iterator2.StartAt)) stateNode.children?.push(iterator2.StartAt);
-      const endNodeId = `${stateName}__iterator__end`;
+      const iteratorStartId = resolver.resolve(processorScope, iterator2.StartAt);
+      if (nodeIndex.get(iteratorStartId)) stateNode.children?.push(iteratorStartId);
+      const endNodeId = iteratorEndMarkerId(stateNode.id);
       const endNode = {
         id: endNodeId,
         isContainer: false,
@@ -63025,7 +63260,9 @@ function extractStatesRecursively(params) {
       markBranchStatesAsChildren({
         branch: iterator2,
         containerNode: stateNode,
-        nodeIndex
+        nodeIndex,
+        resolver,
+        scope: processorScope
       });
     }
     if (state2.Type === "Map") for (const io of ITEM_IO_ROLES) {
@@ -63035,7 +63272,7 @@ function extractStatesRecursively(params) {
         iconResolver: options?.iconResolver,
         resource
       });
-      const satelliteId = `${stateName}${io.idSuffix}`;
+      const satelliteId = `${stateNode.id}${io.idSuffix}`;
       const satelliteNode = {
         id: satelliteId,
         isContainer: false,
@@ -63058,74 +63295,85 @@ function extractStatesRecursively(params) {
   }
 }
 function markBranchStatesAsChildren(params) {
-  const { branch, containerNode, nodeIndex } = params;
+  const { branch, containerNode, nodeIndex, resolver, scope } = params;
   const children = containerNode.children;
   if (!children) return;
   const existingChildren = new Set(children);
-  for (const stateName of Object.keys(branch.States)) if (nodeIndex.has(stateName) && !existingChildren.has(stateName)) {
-    children.push(stateName);
-    existingChildren.add(stateName);
+  for (const stateName of Object.keys(branch.States)) {
+    const id = resolver.resolve(scope, stateName);
+    if (nodeIndex.has(id) && !existingChildren.has(id)) {
+      children.push(id);
+      existingChildren.add(id);
+    }
   }
 }
 function extractNestedEdges(params) {
-  const { definition, edges, options } = params;
+  const { definition, edges, options, resolver, scope } = params;
   for (const [stateName, state2] of Object.entries(definition.States)) {
     if (state2.Type === "Parallel" && state2.Branches) state2.Branches.forEach((branch, index) => {
-      const endNodeId = `${stateName}__branch${index}__end`;
+      const containerId = resolver.resolve(scope, stateName);
+      const branchScope = resolver.branchScope(scope, stateName, index);
+      const endNodeId = branchEndMarkerId(containerId, index);
       edges.push({
-        from: stateName,
-        to: branch.StartAt,
+        from: containerId,
+        to: resolver.resolve(branchScope, branch.StartAt),
         type: "normal",
         visualOnly: true
       });
       for (const [branchStateName, branchState] of Object.entries(branch.States)) {
         const branchEdges = extractEdgesFromState({
           catchLabelStyle: options?.catchLabelStyle,
+          resolveId: (name) => resolver.resolve(branchScope, name),
           state: branchState,
           stateName: branchStateName
         });
         edges.push(...branchEdges);
         if (branchState.End || !branchState.Next && branchState.Type !== "Choice") edges.push({
-          from: branchStateName,
+          from: resolver.resolve(branchScope, branchStateName),
           to: endNodeId,
           type: "normal"
         });
       }
       if (state2.Next) edges.push({
         from: endNodeId,
-        to: state2.Next,
+        to: resolver.resolve(scope, state2.Next),
         type: "normal"
       });
       if (state2.Branches && index === state2.Branches.length - 1 && state2.Next) edges.push({
-        from: stateName,
-        to: state2.Next,
+        from: containerId,
+        to: resolver.resolve(scope, state2.Next),
         type: "normal",
         visualOnly: true
       });
       extractNestedEdges({
         definition: branch,
         edges,
-        options
+        options,
+        resolver,
+        scope: branchScope
       });
     });
     const mapProcessor = state2.Type === "Map" ? getMapProcessor(state2) : void 0;
     if (state2.Type === "Map" && mapProcessor) {
-      const endNodeId = `${stateName}__iterator__end`;
+      const containerId = resolver.resolve(scope, stateName);
+      const processorScope = resolver.processorScope(scope, stateName);
+      const endNodeId = iteratorEndMarkerId(containerId);
       edges.push({
-        from: stateName,
-        to: mapProcessor.StartAt,
+        from: containerId,
+        to: resolver.resolve(processorScope, mapProcessor.StartAt),
         type: "normal",
         visualOnly: true
       });
       for (const [iteratorStateName, iteratorState] of Object.entries(mapProcessor.States)) {
         const iteratorEdges = extractEdgesFromState({
           catchLabelStyle: options?.catchLabelStyle,
+          resolveId: (name) => resolver.resolve(processorScope, name),
           state: iteratorState,
           stateName: iteratorStateName
         });
         edges.push(...iteratorEdges);
         if (iteratorState.End || !iteratorState.Next && iteratorState.Type !== "Choice") edges.push({
-          from: iteratorStateName,
+          from: resolver.resolve(processorScope, iteratorStateName),
           to: endNodeId,
           type: "normal"
         });
@@ -63133,12 +63381,12 @@ function extractNestedEdges(params) {
       if (state2.Next) {
         edges.push({
           from: endNodeId,
-          to: state2.Next,
+          to: resolver.resolve(scope, state2.Next),
           type: "normal"
         });
         edges.push({
-          from: stateName,
-          to: state2.Next,
+          from: containerId,
+          to: resolver.resolve(scope, state2.Next),
           type: "normal",
           visualOnly: true
         });
@@ -63146,7 +63394,9 @@ function extractNestedEdges(params) {
       extractNestedEdges({
         definition: mapProcessor,
         edges,
-        options
+        options,
+        resolver,
+        scope: processorScope
       });
     }
   }
@@ -63217,7 +63467,7 @@ var MermaidRenderer = class {
       if (stateDefinitions.has(id)) return;
       const suffixParts = [
         nodeAnnotations?.[node.id],
-        getContainerSubLabel({
+        getNodeSubLabel({
           node,
           showStateType: false
         }),
@@ -63598,15 +63848,22 @@ function summarize(overlay, allStateNames) {
 function computeOverlay(history) {
   return parseExecutionHistory({ events: normalizeEvents(history) });
 }
+function byNodeId(byStateName, idsForName) {
+  const result = {};
+  for (const [name, value] of Object.entries(byStateName)) for (const id of idsForName(name)) result[id] = value;
+  return result;
+}
 function generateMermaidExecution(params) {
   const { aslDefinition, history } = params;
   const aslObj = typeof aslDefinition === "string" ? JSON.parse(aslDefinition) : aslDefinition;
   const overlay = computeOverlay(history);
   const { nodes, edges } = parseAsl({ definition: aslObj });
+  const resolver = buildIdResolver({ definition: aslObj });
+  const statesByNodeId = byNodeId(overlay.states, resolver.idsForName);
   const executionClasses = {};
   const nodeAnnotations = {};
   for (const node of nodes) {
-    const result = overlay.states[node.id];
+    const result = statesByNodeId[node.id];
     executionClasses[node.id] = result?.status ?? "notReached";
     if (result) {
       const annotation = buildAnnotation(result);
@@ -63656,73 +63913,13 @@ function generateMermaid(params) {
     showVariables: mergedOptions.showVariables
   });
 }
-
-// src/sfn.ts
-var import_client_sfn2 = __toESM(require_dist_cjs53());
-
-// ../../dist/aws.js
-var import_client_sfn = __toESM(require_dist_cjs53(), 1);
-async function fetchExecutionHistory(params) {
-  const { client, executionArn, maxResults = 1e3 } = params;
-  const events = [];
-  let nextToken;
-  do {
-    const page = await client.send(new import_client_sfn.GetExecutionHistoryCommand({
-      executionArn,
-      maxResults,
-      nextToken
-    }));
-    events.push(...page.events ?? []);
-    nextToken = page.nextToken;
-  } while (nextToken);
-  return events;
-}
-
-// src/sfn.ts
-async function fetchExecutionForOverlay(params) {
-  const { mode, region, stateMachineArn } = params;
-  const client = new import_client_sfn2.SFNClient(region ? { region } : {});
-  const list2 = await client.send(
-    new import_client_sfn2.ListExecutionsCommand({
-      maxResults: 1,
-      stateMachineArn,
-      statusFilter: mode === "latest-failed" ? "FAILED" : void 0
-    })
-  );
-  const newest = list2.executions?.[0];
-  if (!newest?.executionArn) {
-    return void 0;
-  }
-  const events = await fetchExecutionHistory({ client, executionArn: newest.executionArn });
-  return {
-    events,
-    executionArn: newest.executionArn,
-    startDate: newest.startDate,
-    status: newest.status
-  };
-}
-
-// src/run.ts
-var COMMENT_PREFIX = "<!-- sfn-diagram-action:";
-var EXECUTION_MODES = ["off", "latest", "latest-failed"];
 function isAslDefinition(obj) {
   return typeof obj === "object" && obj !== null && "StartAt" in obj && "States" in obj && typeof obj.StartAt === "string";
 }
-function parseAsl2(content) {
+function parseAslJson(content) {
   try {
     const parsed = JSON.parse(content);
     return isAslDefinition(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-async function getFileAtRef(params) {
-  const { octokit, owner, path: path2, ref, repo } = params;
-  try {
-    const response = await octokit.rest.repos.getContent({ owner, path: path2, ref, repo });
-    const data2 = response.data;
-    if (Array.isArray(data2) || data2.type !== "file") return null;
-    return Buffer.from(data2.content, "base64").toString("utf-8");
   } catch {
     return null;
   }
@@ -63733,33 +63930,124 @@ function matchesPatterns(filepath, patterns) {
 function formatStateList(names) {
   return names.map((name) => `\`${name}\``).join(", ");
 }
+function buildAslFileSection(change, options = {}) {
+  const { afterAsl, beforeAsl, filename } = change;
+  if (!afterAsl && !beforeAsl) return null;
+  if (!afterAsl && beforeAsl) {
+    const { code } = generateMermaid({
+      aslDefinition: beforeAsl,
+      ...options
+    });
+    return {
+      afterAsl: null,
+      filename,
+      header: `### \`${filename}\`
+
+> \u26A0\uFE0F **File deleted**
+
+`,
+      mermaidCode: code,
+      mermaidLabel: "\u{1F4CA} Before diagram",
+      mermaidOpenByDefault: false
+    };
+  }
+  if (afterAsl && !beforeAsl) {
+    const { code } = generateMermaid({
+      aslDefinition: afterAsl,
+      ...options
+    });
+    return {
+      afterAsl,
+      filename,
+      header: `### \`${filename}\`
+
+> \u2728 **New file**
+
+`,
+      mermaidCode: code,
+      mermaidLabel: "\u{1F4CA} Diagram",
+      mermaidOpenByDefault: false
+    };
+  }
+  const diff = generateMermaidDiff({
+    after: afterAsl,
+    before: beforeAsl
+  });
+  const { added, modified, removed, unchanged } = diff.metadata;
+  const rows = [];
+  if (added.length > 0) rows.push(`| \u2795 Added | ${formatStateList(added)} |`);
+  if (modified.length > 0) rows.push(`| \u270F\uFE0F Modified | ${formatStateList(modified)} |`);
+  if (removed.length > 0) rows.push(`| \u274C Removed | ${formatStateList(removed)} |`);
+  if (rows.length === 0) rows.push(`| \u2705 No changes | ${unchanged.length} state${unchanged.length !== 1 ? "s" : ""} unchanged |`);
+  return {
+    afterAsl,
+    filename,
+    header: `### \`${filename}\`
+
+| | States |
+|---|---|
+${rows.join("\n")}
+
+`,
+    mermaidCode: diff.code,
+    mermaidLabel: "\u{1F4CA} Diagram (changes highlighted)",
+    mermaidOpenByDefault: true
+  };
+}
+function renderAslFileSection(section, options = { includeDiagram: true }) {
+  if (!options.includeDiagram) return `${section.header}> \u{1F4CE} Diagram omitted \u2014 see the diagram artifact attached to this pipeline
+`;
+  const openAttribute = section.mermaidOpenByDefault ? " open" : "";
+  return `${section.header}<details${openAttribute}>
+<summary>${section.mermaidLabel}</summary>
+
+\`\`\`mermaid
+${section.mermaidCode}
+\`\`\`
+
+</details>
+`;
+}
 async function buildExecutionOverlaySection(params) {
-  const { candidates, mode, region, stateMachineArn } = params;
-  if (candidates.length === 0) {
-    core.info("Execution overlay: no added/modified ASL definition to overlay \u2014 skipping");
-    return null;
-  }
-  if (candidates.length > 1) {
-    core.warning(
-      "Execution overlay: multiple ASL files changed; a single state-machine-arn cannot be mapped to them \u2014 skipping. Limit the PR to one state machine or unset execution-mode."
-    );
-    return null;
-  }
+  const { candidates, fetchExecution, mode, region, stateMachineArn } = params;
+  if (candidates.length === 0) return {
+    log: {
+      level: "info",
+      message: "Execution overlay: no added/modified ASL definition to overlay \u2014 skipping"
+    },
+    section: null
+  };
+  if (candidates.length > 1) return {
+    log: {
+      level: "warning",
+      message: "Execution overlay: multiple ASL files changed; a single state-machine-arn cannot be mapped to them \u2014 skipping. Limit the change to one state machine or unset execution-mode."
+    },
+    section: null
+  };
   const [candidate] = candidates;
   let execution;
   try {
-    execution = await fetchExecutionForOverlay({ mode, region, stateMachineArn });
+    execution = await fetchExecution({
+      mode,
+      region,
+      stateMachineArn
+    });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    core.warning(`Execution overlay: failed to fetch execution history \u2014 ${message}`);
-    return null;
+    return {
+      log: {
+        level: "warning",
+        message: `Execution overlay: failed to fetch execution history \u2014 ${err instanceof Error ? err.message : String(err)}`
+      },
+      section: null
+    };
   }
-  if (!execution) {
-    core.info(
-      `Execution overlay: no ${mode === "latest-failed" ? "failed " : ""}execution found for ${stateMachineArn}`
-    );
-    return null;
-  }
+  if (!execution) return {
+    log: {
+      level: "info",
+      message: `Execution overlay: no ${mode === "latest-failed" ? "failed " : ""}execution found for ${stateMachineArn}`
+    },
+    section: null
+  };
   const { code, metadata } = generateMermaidExecution({
     aslDefinition: candidate.afterAsl,
     history: execution.events
@@ -63770,24 +64058,92 @@ async function buildExecutionOverlaySection(params) {
     `\u{1F7E0} ${metadata.caught.length}`,
     `\u26AA ${metadata.notReached.length}`
   ].join(" \xB7 ");
-  let section = `### \u{1F3AC} Execution overlay \u2014 \`${candidate.filename}\`
+  let header = `### \u{1F3AC} Execution overlay \u2014 \`${candidate.filename}\`
 
 `;
-  section += `> Most recent${mode === "latest-failed" ? " **failed**" : ""} execution: \`${execution.executionArn}\`
+  header += `> Most recent${mode === "latest-failed" ? " **failed**" : ""} execution: \`${execution.executionArn}\`
 `;
-  section += `> Status: **${execution.status ?? metadata.executionStatus}** \u2014 ${summary} (succeeded \xB7 failed \xB7 caught \xB7 not reached)
+  header += `> Status: **${execution.status ?? metadata.executionStatus}** \u2014 ${summary} (succeeded \xB7 failed \xB7 caught \xB7 not reached)
 
 `;
-  section += `<details open>
-<summary>\u{1F4CA} Execution diagram</summary>
+  return { section: {
+    header,
+    mermaidCode: code,
+    mermaidLabel: "\u{1F4CA} Execution diagram"
+  } };
+}
+function renderExecutionOverlaySection(section, options = { includeDiagram: true }) {
+  if (!options.includeDiagram) return `${section.header}> \u{1F4CE} Execution diagram omitted \u2014 GitLab's diagram budget was already used by the changed-file diagrams above
+`;
+  return `${section.header}<details open>
+<summary>${section.mermaidLabel}</summary>
 
 \`\`\`mermaid
-${code}
+${section.mermaidCode}
 \`\`\`
 
 </details>
 `;
-  return section;
+}
+var DEFAULT_REPORT_HEADING = "## \u{1F500} Step Functions Diagram Changes";
+var DEFAULT_REPORT_FOOTER = "*Diagrams by [sfn-diagram](https://sfn.yusufaf.dev) \u2014 [try the playground](https://sfn.yusufaf.dev/playground/) \xB7 [source](https://github.com/yusufaf/sfn-diagram)*";
+function assembleCommentBody(params) {
+  const { footer = DEFAULT_REPORT_FOOTER, heading = DEFAULT_REPORT_HEADING, marker, sections } = params;
+  return [
+    marker,
+    heading,
+    "",
+    sections.join("\n---\n\n"),
+    "",
+    footer
+  ].join("\n");
+}
+async function loadAwsSfn() {
+  try {
+    const [clientSfn, aws] = await Promise.all([Promise.resolve().then(() => __toESM(require_dist_cjs53(), 1)), Promise.resolve().then(() => (init_aws(), aws_exports))]);
+    return {
+      ListExecutionsCommand: clientSfn.ListExecutionsCommand,
+      SFNClient: clientSfn.SFNClient,
+      fetchExecutionHistory: aws.fetchExecutionHistory
+    };
+  } catch {
+    throw new Error("Execution overlays require the optional peer dependency '@aws-sdk/client-sfn'. Install it with: npm install @aws-sdk/client-sfn");
+  }
+}
+async function fetchExecutionForOverlay(params) {
+  const { mode, region, stateMachineArn } = params;
+  const { ListExecutionsCommand, SFNClient, fetchExecutionHistory: fetchExecutionHistory2 } = await loadAwsSfn();
+  const client = new SFNClient(region ? { region } : {});
+  const newest = (await client.send(new ListExecutionsCommand({
+    maxResults: 1,
+    stateMachineArn,
+    statusFilter: mode === "latest-failed" ? "FAILED" : void 0
+  }))).executions?.[0];
+  if (!newest?.executionArn) return;
+  return {
+    events: await fetchExecutionHistory2({
+      client,
+      executionArn: newest.executionArn
+    }),
+    executionArn: newest.executionArn,
+    startDate: newest.startDate,
+    status: newest.status
+  };
+}
+
+// src/run.ts
+var COMMENT_PREFIX = "<!-- sfn-diagram-action:";
+var EXECUTION_MODES = ["off", "latest", "latest-failed"];
+async function getFileAtRef(params) {
+  const { octokit, owner, path: path2, ref, repo } = params;
+  try {
+    const response = await octokit.rest.repos.getContent({ owner, path: path2, ref, repo });
+    const data2 = response.data;
+    if (Array.isArray(data2) || data2.type !== "file") return null;
+    return Buffer.from(data2.content, "base64").toString("utf-8");
+  } catch {
+    return null;
+  }
 }
 async function run() {
   const token = core.getInput("github-token", { required: true });
@@ -63837,8 +64193,8 @@ async function run() {
     const { filename, status } = file;
     const beforeContent = status === "added" ? null : await getFileAtRef({ octokit, owner, path: filename, ref: baseSha, repo });
     const afterContent = status === "removed" ? null : await getFileAtRef({ octokit, owner, path: filename, ref: headSha, repo });
-    const beforeAsl = beforeContent ? parseAsl2(beforeContent) : null;
-    const afterAsl = afterContent ? parseAsl2(afterContent) : null;
+    const beforeAsl = beforeContent ? parseAslJson(beforeContent) : null;
+    const afterAsl = afterContent ? parseAslJson(afterContent) : null;
     if (!beforeAsl && !afterAsl) {
       core.info(`Skipping ${filename}: not a valid ASL definition`);
       continue;
@@ -63846,84 +64202,32 @@ async function run() {
     if (afterAsl) {
       overlayCandidates.push({ afterAsl, filename });
     }
-    let section = `### \`${filename}\`
-
-`;
-    if (!afterAsl && beforeAsl) {
-      section += "> \u26A0\uFE0F **File deleted**\n\n";
-      const { code } = generateMermaid({ aslDefinition: beforeAsl });
-      section += `<details>
-<summary>\u{1F4CA} Before diagram</summary>
-
-\`\`\`mermaid
-${code}
-\`\`\`
-
-</details>
-`;
-    } else if (afterAsl && !beforeAsl) {
-      section += "> \u2728 **New file**\n\n";
-      const { code } = generateMermaid({ aslDefinition: afterAsl });
-      section += `<details>
-<summary>\u{1F4CA} Diagram</summary>
-
-\`\`\`mermaid
-${code}
-\`\`\`
-
-</details>
-`;
-    } else if (afterAsl && beforeAsl) {
-      const diff = generateMermaidDiff({ after: afterAsl, before: beforeAsl });
-      const { added, modified, removed, unchanged } = diff.metadata;
-      const rows = [];
-      if (added.length > 0) rows.push(`| \u2795 Added | ${formatStateList(added)} |`);
-      if (modified.length > 0) rows.push(`| \u270F\uFE0F Modified | ${formatStateList(modified)} |`);
-      if (removed.length > 0) rows.push(`| \u274C Removed | ${formatStateList(removed)} |`);
-      if (rows.length === 0) {
-        rows.push(`| \u2705 No changes | ${unchanged.length} state${unchanged.length !== 1 ? "s" : ""} unchanged |`);
-      }
-      section += `| | States |
-|---|---|
-${rows.join("\n")}
-
-`;
-      section += `<details open>
-<summary>\u{1F4CA} Diagram (changes highlighted)</summary>
-
-\`\`\`mermaid
-${diff.code}
-\`\`\`
-
-</details>
-`;
-    }
-    sections.push(section);
+    const section = buildAslFileSection({ afterAsl, beforeAsl, filename });
+    if (section) sections.push(section);
   }
+  const bodySections = sections.map((section) => renderAslFileSection(section));
   if (executionMode !== "off") {
-    const overlaySection = await buildExecutionOverlaySection({
+    const overlay = await buildExecutionOverlaySection({
       candidates: overlayCandidates,
+      fetchExecution: fetchExecutionForOverlay,
       mode: executionMode,
       region: awsRegion,
       stateMachineArn
     });
-    if (overlaySection) {
-      sections.push(overlaySection);
+    if (overlay.log) {
+      const logFn = overlay.log.level === "warning" ? core.warning : core.info;
+      logFn(overlay.log.message);
+    }
+    if (overlay.section) {
+      bodySections.push(renderExecutionOverlaySection(overlay.section));
     }
   }
-  if (sections.length === 0) {
+  if (bodySections.length === 0) {
     core.info("No valid ASL definitions found in changed files");
     return;
   }
   const marker = `${COMMENT_PREFIX}${commentTag}-->`;
-  const body = [
-    marker,
-    "## \u{1F500} Step Functions Diagram Changes",
-    "",
-    sections.join("\n---\n\n"),
-    "",
-    "*Generated by [sfn-diagram](https://github.com/yusufaf/sfn-diagram)*"
-  ].join("\n");
+  const body = assembleCommentBody({ marker, sections: bodySections });
   const { data: existingComments } = await octokit.rest.issues.listComments({
     issue_number: pullNumber,
     owner,
