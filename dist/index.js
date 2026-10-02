@@ -66637,26 +66637,49 @@ var AWS_DARK_THEME = {
   fontSize: 14,
   fontFamily: "Arial, sans-serif"
 };
-function getTheme(theme, customColors) {
-  let baseTheme;
-  if (!theme || theme === "light") baseTheme = AWS_LIGHT_THEME;
-  else if (theme === "dark") baseTheme = AWS_DARK_THEME;
-  else baseTheme = theme;
-  if (customColors) {
-    const nodeColors = { ...baseTheme.nodeColors };
-    for (const [stateType, colors] of Object.entries(customColors)) {
-      const key = stateType;
-      nodeColors[key] = {
-        ...nodeColors[key],
-        ...colors
-      };
-    }
-    return {
-      ...baseTheme,
-      nodeColors
+function mergeNodeColors(base, overrides) {
+  if (!overrides) return base;
+  const nodeColors = { ...base };
+  for (const [stateType, colors] of Object.entries(overrides)) {
+    if (!colors) continue;
+    const key = stateType;
+    nodeColors[key] = {
+      ...nodeColors[key],
+      ...withoutUndefined(colors)
     };
   }
-  return baseTheme;
+  return nodeColors;
+}
+function withoutUndefined(value) {
+  return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== void 0));
+}
+function getTheme(theme, customColors) {
+  let resolved;
+  if (!theme || theme === "light") resolved = AWS_LIGHT_THEME;
+  else if (theme === "dark") resolved = AWS_DARK_THEME;
+  else {
+    const base = theme.base === "dark" ? AWS_DARK_THEME : AWS_LIGHT_THEME;
+    const { background, edgeColors, fontFamily, fontSize, nodeColors, textColor } = theme;
+    resolved = {
+      ...base,
+      ...withoutUndefined({
+        background,
+        fontFamily,
+        fontSize,
+        textColor
+      }),
+      edgeColors: {
+        ...base.edgeColors,
+        ...edgeColors ? withoutUndefined(edgeColors) : {}
+      },
+      nodeColors: mergeNodeColors(base.nodeColors, nodeColors)
+    };
+  }
+  if (customColors) return {
+    ...resolved,
+    nodeColors: mergeNodeColors(resolved.nodeColors, customColors)
+  };
+  return resolved;
 }
 function getNodeStyle(params) {
   const { stateType, theme = AWS_LIGHT_THEME, customColors, stylePreset = "aws-standard" } = params;
@@ -66702,6 +66725,14 @@ function getStrokeWidthForType(stateType) {
 }
 function stripJsonataDelimiters(expression) {
   return expression.replace(/^\{%\s*/, "").replace(/\s*%\}$/, "").trim();
+}
+function resolveQueryLanguage(params) {
+  const { machineQueryLanguage, state: state2 } = params;
+  return state2.QueryLanguage ?? machineQueryLanguage ?? "JSONPath";
+}
+function unwrapExpression(params) {
+  const { queryLanguage, value } = params;
+  return queryLanguage === "JSONata" ? stripJsonataDelimiters(value) : value;
 }
 var NARROW = 0.3;
 var MEDIUM_NARROW = 0.4;
@@ -66941,13 +66972,20 @@ function getErrorLabel(errorTypes) {
   const errors = errorTypes?.join(", ") || "Any";
   return `${EDGE_LABELS.ERROR_PREFIX} ${errors}`;
 }
-var MAX_SHOWN_VARIABLES = 3;
+var MAX_SHOWN_NAMES = 3;
+function summarizeNames(params) {
+  const { names, prefix = "" } = params;
+  const shown = names.slice(0, MAX_SHOWN_NAMES);
+  const label = shown.map((name) => `${prefix}${name}`).join(", ");
+  const remaining = names.length - shown.length;
+  return remaining > 0 ? `${label} +${remaining} more` : label;
+}
 function getAssignedVariablesLabel(variableNames) {
   if (variableNames.length === 0) return "";
-  const shown = variableNames.slice(0, MAX_SHOWN_VARIABLES);
-  const label = shown.map((variableName) => `$${variableName}`).join(", ");
-  const remaining = variableNames.length - shown.length;
-  return remaining > 0 ? `${label} +${remaining} more` : label;
+  return summarizeNames({
+    names: variableNames,
+    prefix: "$"
+  });
 }
 var MAX_SUB_LABEL_EXPRESSION = 32;
 function elide(text, maxLength = MAX_SUB_LABEL_EXPRESSION) {
@@ -66959,47 +66997,66 @@ function isNonEmptyString(value) {
   return typeof value === "string" && value !== "";
 }
 var SUB_LABEL_SEPARATOR = " \xB7 ";
-function getWaitDurationLabel(state2) {
+function getWaitDurationLabel(params) {
+  const { queryLanguage, state: state2 } = params;
   if (typeof state2.Seconds === "number") return `${state2.Seconds}s`;
-  if (typeof state2.Seconds === "string") return elide(stripJsonataDelimiters(state2.Seconds));
+  if (typeof state2.Seconds === "string") return elide(unwrapExpression({
+    queryLanguage,
+    value: state2.Seconds
+  }));
   if (state2.SecondsPath !== void 0) return elide(state2.SecondsPath);
-  if (state2.Timestamp !== void 0) return elide(stripJsonataDelimiters(state2.Timestamp));
+  if (state2.Timestamp !== void 0) return elide(unwrapExpression({
+    queryLanguage,
+    value: state2.Timestamp
+  }));
   if (state2.TimestampPath !== void 0) return elide(state2.TimestampPath);
   return "";
 }
 function getFailDetailLabel(params) {
-  const { literal, maxLength, path: path2, prefix } = params;
-  const value = isNonEmptyString(literal) ? stripJsonataDelimiters(literal) : isNonEmptyString(path2) ? path2 : "";
+  const { literal, maxLength, path: path2, prefix, queryLanguage } = params;
+  const value = isNonEmptyString(literal) ? unwrapExpression({
+    queryLanguage,
+    value: literal
+  }) : isNonEmptyString(path2) ? path2 : "";
   return value === "" ? "" : elide(`${prefix}: ${value}`, maxLength);
 }
 var FAIL_ERROR_PREFIX = "error";
-function getFailErrorLabel(state2) {
+function getFailErrorLabel(params) {
+  const { queryLanguage, state: state2 } = params;
   return getFailDetailLabel({
     literal: state2.Error,
     maxLength: `${FAIL_ERROR_PREFIX}: `.length + MAX_SUB_LABEL_EXPRESSION,
     path: state2.ErrorPath,
-    prefix: FAIL_ERROR_PREFIX
+    prefix: FAIL_ERROR_PREFIX,
+    queryLanguage
   });
 }
-function getFailCauseLabel(state2) {
+function getFailCauseLabel(params) {
+  const { queryLanguage, state: state2 } = params;
   return getFailDetailLabel({
     literal: state2.Cause,
     maxLength: MAX_CAUSE_LABEL,
     path: state2.CausePath,
-    prefix: "cause"
+    prefix: "cause",
+    queryLanguage
   });
 }
 function getSecondsLabel(params) {
-  const { path: path2, prefix, seconds } = params;
+  const { path: path2, prefix, queryLanguage, seconds } = params;
   if (typeof seconds === "number") return `${prefix} ${seconds}s`;
-  if (isNonEmptyString(seconds)) return `${prefix} ${elide(stripJsonataDelimiters(seconds))}`;
+  if (isNonEmptyString(seconds)) return `${prefix} ${elide(unwrapExpression({
+    queryLanguage,
+    value: seconds
+  }))}`;
   if (isNonEmptyString(path2)) return `${prefix} ${elide(path2)}`;
   return "";
 }
-function getTaskTimeoutLabel(state2) {
+function getTaskTimeoutLabel(params) {
+  const { queryLanguage, state: state2 } = params;
   return getSecondsLabel({
     path: state2.TimeoutSecondsPath,
     prefix: "timeout",
+    queryLanguage,
     seconds: state2.TimeoutSeconds
   });
 }
@@ -67010,21 +67067,30 @@ function getTaskIntegrationPatternLabel(state2) {
   if (!match2) return "";
   return match2[1] === "waitForTaskToken" ? "callback" : "sync";
 }
-function getTaskHeartbeatLabel(state2) {
+function getTaskHeartbeatLabel(params) {
+  const { queryLanguage, state: state2 } = params;
   return getSecondsLabel({
     path: state2.HeartbeatSecondsPath,
     prefix: "heartbeat",
+    queryLanguage,
     seconds: state2.HeartbeatSeconds
   });
 }
-function getToleratedFailureLabel(state2) {
+function getToleratedFailureLabel(params) {
+  const { queryLanguage, state: state2 } = params;
   const parts = [];
   const count = state2.ToleratedFailureCount;
   const percentage = state2.ToleratedFailurePercentage;
   if (typeof count === "number") parts.push(`${count} failure${count === 1 ? "" : "s"}`);
-  else if (typeof count === "string") parts.push(`${elide(stripJsonataDelimiters(count))} failures`);
+  else if (typeof count === "string") parts.push(`${elide(unwrapExpression({
+    queryLanguage,
+    value: count
+  }))} failures`);
   if (typeof percentage === "number") parts.push(`${percentage}%`);
-  else if (typeof percentage === "string") parts.push(`${elide(stripJsonataDelimiters(percentage))}%`);
+  else if (typeof percentage === "string") parts.push(`${elide(unwrapExpression({
+    queryLanguage,
+    value: percentage
+  }))}%`);
   return parts.length > 0 ? `tolerate ${parts.join(" or ")}` : "";
 }
 var BYTES_PER_KIB = 1024;
@@ -67043,6 +67109,55 @@ function getItemBatchingLabel(state2) {
 function getItemsPathLabel(state2) {
   return typeof state2.ItemsPath === "string" && state2.ItemsPath !== "" ? `items ${elide(state2.ItemsPath)}` : "";
 }
+var JSONPATH_KEY_SUFFIX$1 = ".$";
+function getPayloadLabel(params) {
+  const { emptyIsSet, prefix, queryLanguage, value } = params;
+  if (value === void 0) return "";
+  if (value === null) return emptyIsSet ? `${prefix} null` : "";
+  if (typeof value === "string") {
+    if (value === "") return emptyIsSet ? `${prefix} ""` : "";
+    return `${prefix} ${elide(unwrapExpression({
+      queryLanguage,
+      value
+    }))}`;
+  }
+  if (typeof value === "object" && !Array.isArray(value)) {
+    const keys = Object.keys(value);
+    if (keys.length === 0) return emptyIsSet ? `${prefix} {}` : "";
+    return `${prefix} ${summarizeNames({ names: queryLanguage === "JSONPath" ? keys.map((key) => key.endsWith(JSONPATH_KEY_SUFFIX$1) ? key.slice(0, -2) : key) : keys })}`;
+  }
+  return `${prefix} ${elide(JSON.stringify(value))}`;
+}
+function getArgumentsLabel(params) {
+  const { queryLanguage, state: state2 } = params;
+  return getPayloadLabel({
+    emptyIsSet: false,
+    prefix: "args",
+    queryLanguage,
+    value: state2.Arguments
+  });
+}
+function getOutputLabel(params) {
+  const { queryLanguage, state: state2 } = params;
+  return getPayloadLabel({
+    emptyIsSet: true,
+    prefix: "output",
+    queryLanguage,
+    value: state2.Output
+  });
+}
+function getItemSelectorLabel(params) {
+  const { queryLanguage, state: state2 } = params;
+  return getPayloadLabel({
+    emptyIsSet: false,
+    prefix: "selector",
+    queryLanguage,
+    value: state2.ItemSelector
+  });
+}
+function getChildExecutionLabel(state2) {
+  return isNonEmptyString(state2.Label) ? `label ${elide(state2.Label)}` : "";
+}
 function getNodeSubLabel(params) {
   return getNodeSubLabelParts(params).join(SUB_LABEL_SEPARATOR);
 }
@@ -67053,16 +67168,20 @@ function getNodeSubLabelParts(params) {
   if (showStateType) parts.push(node.isContainer ? `${node.type} state` : node.type);
   if (node.isDistributedMap) parts.push("Distributed");
   if (typeof node.maxConcurrency === "number") parts.push(`max ${node.maxConcurrency}`);
-  else if (typeof node.maxConcurrency === "string") parts.push(`max ${elide(stripJsonataDelimiters(node.maxConcurrency))}`);
+  else if (typeof node.maxConcurrency === "string") parts.push(`max ${elide(node.maxConcurrency)}`);
   if (node.toleratedFailure !== void 0) parts.push(node.toleratedFailure);
   if (node.itemBatching !== void 0) parts.push(node.itemBatching);
   if (node.itemsPath !== void 0) parts.push(node.itemsPath);
+  if (node.itemSelector !== void 0) parts.push(node.itemSelector);
+  if (node.mapLabel !== void 0) parts.push(node.mapLabel);
   if (node.waitDuration !== void 0) parts.push(node.waitDuration);
   if (node.integrationPattern !== void 0) parts.push(node.integrationPattern);
   if (node.taskTimeout !== void 0) parts.push(node.taskTimeout);
   if (node.taskHeartbeat !== void 0) parts.push(node.taskHeartbeat);
   if (node.failError !== void 0) parts.push(node.failError);
   if (node.failCause !== void 0) parts.push(node.failCause);
+  if (node.inputArguments !== void 0) parts.push(node.inputArguments);
+  if (node.output !== void 0) parts.push(node.output);
   return parts;
 }
 function getCatchLabel(params) {
@@ -67342,6 +67461,46 @@ function applyCatchHandling(params) {
     nodes: survivingNodes
   };
 }
+var DEFAULT_DIAGRAM_OPTIONS = {
+  format: "svg",
+  theme: "light",
+  customColors: void 0,
+  layout: "TB",
+  rankSeparation: 50,
+  nodeSeparation: 50,
+  width: void 0,
+  height: void 0,
+  nodeWidth: 120,
+  nodeHeight: 60,
+  padding: 20,
+  includeComments: true,
+  showStateTypes: false,
+  showVariables: true,
+  edgeStyle: "curved",
+  edgeHitAreas: false,
+  collapseControls: false,
+  catchHandling: "show",
+  catchLabelStyle: "error-type",
+  collapse: void 0,
+  stylePreset: "aws-standard",
+  iconPosition: "left",
+  iconResolver: void 0,
+  iconSize: 24,
+  showIcons: false,
+  pngQuality: 90,
+  backgroundColor: "transparent",
+  nodeOverrides: void 0,
+  edgeOverrides: void 0,
+  nodeAnnotations: void 0,
+  diagramDescription: void 0,
+  diagramTitle: void 0
+};
+function mergeOptions(options = {}) {
+  return {
+    ...DEFAULT_DIAGRAM_OPTIONS,
+    ...options
+  };
+}
 function flattenMarkers(params) {
   const { edges, nodes: nodes5 } = params;
   const markerIds = new Set(nodes5.filter((node) => isMarkerNode(node)).map((node) => node.id));
@@ -67511,12 +67670,31 @@ function buildIdResolver(params) {
     return assigned.get(assignmentKey(scope, name)) ?? name;
   }
 }
-var AslValidationError = class extends Error {
+var AslValidationError = class AslValidationError2 extends Error {
   constructor(message) {
     super(message);
     this.name = "AslValidationError";
   }
+  static [Symbol.hasInstance](value) {
+    if (Function.prototype[Symbol.hasInstance].call(this, value)) return true;
+    return this === AslValidationError2 && value instanceof AslSyntaxError;
+  }
 };
+var AslSyntaxError = class extends SyntaxError {
+  constructor(message, options) {
+    super(message, options);
+    this.name = "AslSyntaxError";
+  }
+};
+function parseAslSource(params) {
+  const { source } = params;
+  if (typeof source !== "string") return source;
+  try {
+    return JSON.parse(source);
+  } catch (error2) {
+    throw new AslSyntaxError(`ASL definition is not valid JSON: ${error2 instanceof Error ? error2.message : String(error2)}`, { cause: error2 });
+  }
+}
 var VALID_STATE_TYPES = [
   "Pass",
   "Task",
@@ -67527,37 +67705,82 @@ var VALID_STATE_TYPES = [
   "Parallel",
   "Map"
 ];
+function escapePointerToken(token) {
+  return token.replace(/~/g, "~0").replace(/\//g, "~1");
+}
 function validateScope(params) {
-  const { definition, scope } = params;
+  const { definition, pointer, scope, sink } = params;
   const isRoot = scope === "";
   const subject = isRoot ? "ASL definition" : scope;
   const qualify = (text) => isRoot ? text : `${scope}: ${text}`;
   const nest = (label) => isRoot ? label : `${scope} > ${label}`;
-  if (!definition || typeof definition !== "object") throw new AslValidationError(`${subject} must be a non-null object`);
+  const report = (code, path2, message) => sink.report({
+    code,
+    message,
+    path: path2,
+    severity: "error"
+  });
+  if (!definition || typeof definition !== "object") {
+    report("invalid-structure", pointer, `${subject} must be a non-null object`);
+    return;
+  }
   const asl = definition;
-  if (!("StartAt" in asl)) throw new AslValidationError(`${subject} missing required field: StartAt`);
-  if (typeof asl.StartAt !== "string" || asl.StartAt.trim() === "") throw new AslValidationError(qualify("StartAt must be a non-empty string"));
-  if (!("States" in asl)) throw new AslValidationError(`${subject} missing required field: States`);
-  if (!asl.States || typeof asl.States !== "object") throw new AslValidationError(qualify("States must be a non-null object"));
+  const machineQueryLanguage = isRoot ? asl.QueryLanguage === "JSONata" || asl.QueryLanguage === "JSONPath" ? asl.QueryLanguage : void 0 : params.machineQueryLanguage;
+  let startAt;
+  if (!("StartAt" in asl)) report("invalid-structure", pointer, `${subject} missing required field: StartAt`);
+  else if (typeof asl.StartAt !== "string" || asl.StartAt.trim() === "") report("invalid-field", `${pointer}/StartAt`, qualify("StartAt must be a non-empty string"));
+  else startAt = asl.StartAt;
+  if (!("States" in asl)) {
+    report("invalid-structure", pointer, `${subject} missing required field: States`);
+    return;
+  }
+  if (!asl.States || typeof asl.States !== "object") {
+    report("invalid-structure", `${pointer}/States`, qualify("States must be a non-null object"));
+    return;
+  }
   const states = asl.States;
   const stateNames = Object.keys(states);
-  if (stateNames.length === 0) throw new AslValidationError(qualify("States object cannot be empty"));
+  if (stateNames.length === 0) {
+    report("invalid-structure", `${pointer}/States`, qualify("States object cannot be empty"));
+    return;
+  }
   const stateNameSet = new Set(stateNames);
-  if (!stateNameSet.has(asl.StartAt)) throw new AslValidationError(qualify(`StartAt references non-existent state: "${asl.StartAt}". Available states: ${stateNames.join(", ")}`));
+  if (startAt !== void 0 && !stateNameSet.has(startAt)) {
+    report("dangling-transition", `${pointer}/StartAt`, qualify(`StartAt references non-existent state: "${startAt}". Available states: ${stateNames.join(", ")}`));
+    startAt = void 0;
+  }
   for (const [stateName, stateValue] of Object.entries(states)) validateState({
+    machineQueryLanguage,
+    pointer: `${pointer}/States/${escapePointerToken(stateName)}`,
     scope,
+    sink,
     stateName,
     stateNames: stateNameSet,
     stateValue
   });
+  sink.onScope?.({
+    machineQueryLanguage,
+    pointer,
+    scope,
+    startAt,
+    states
+  });
   for (const [stateName, stateValue] of Object.entries(states)) {
+    if (!stateValue || typeof stateValue !== "object") continue;
     const state2 = stateValue;
+    const statePointer = `${pointer}/States/${escapePointerToken(stateName)}`;
     if (state2.Type === "Parallel" && state2.Branches !== void 0) {
-      if (!Array.isArray(state2.Branches)) throw new AslValidationError(qualify(`State "${stateName}": Branches must be an array`));
+      if (!Array.isArray(state2.Branches)) {
+        report("invalid-field", `${statePointer}/Branches`, qualify(`State "${stateName}": Branches must be an array`));
+        continue;
+      }
       state2.Branches.forEach((branch, index) => {
         validateScope({
           definition: branch,
-          scope: nest(`Parallel state "${stateName}" branch ${index + 1}`)
+          machineQueryLanguage,
+          pointer: `${statePointer}/Branches/${index}`,
+          scope: nest(`Parallel state "${stateName}" branch ${index + 1}`),
+          sink
         });
       });
     }
@@ -67565,57 +67788,92 @@ function validateScope(params) {
       const processor = getMapProcessor(state2);
       if (processor !== void 0) validateScope({
         definition: processor,
-        scope: nest(`Map state "${stateName}" processor`)
+        machineQueryLanguage,
+        pointer: `${statePointer}/${state2.ItemProcessor !== void 0 ? "ItemProcessor" : "Iterator"}`,
+        scope: nest(`Map state "${stateName}" processor`),
+        sink
       });
     }
   }
 }
-function validateAsl(params) {
+function runValidation(params) {
+  const { definition, sink } = params;
   validateScope({
+    definition,
+    machineQueryLanguage: void 0,
+    pointer: "",
+    scope: "",
+    sink
+  });
+}
+function validateAsl(params) {
+  runValidation({
     definition: params.definition,
-    scope: ""
+    sink: { report: (diagnostic) => {
+      throw new AslValidationError(diagnostic.message);
+    } }
   });
 }
 function validateState(params) {
-  const { scope, stateName, stateNames, stateValue } = params;
-  const fail = (text) => {
-    throw new AslValidationError(scope === "" ? text : `${scope}: ${text}`);
-  };
-  if (!stateValue || typeof stateValue !== "object") fail(`State "${stateName}" must be a non-null object`);
+  const { machineQueryLanguage, pointer, scope, sink, stateName, stateNames, stateValue } = params;
+  const report = (code, path2, text) => sink.report({
+    code,
+    message: scope === "" ? text : `${scope}: ${text}`,
+    path: path2,
+    severity: "error"
+  });
+  if (!stateValue || typeof stateValue !== "object") {
+    report("invalid-structure", pointer, `State "${stateName}" must be a non-null object`);
+    return;
+  }
   const state2 = stateValue;
-  if (!("Type" in state2)) fail(`State "${stateName}" missing required field: Type`);
+  if (!("Type" in state2)) {
+    report("invalid-state-type", pointer, `State "${stateName}" missing required field: Type`);
+    return;
+  }
   const stateType = state2.Type;
-  if (typeof stateType !== "string" || !VALID_STATE_TYPES.includes(stateType)) fail(`State "${stateName}" has invalid Type: "${stateType}". Valid types: ${VALID_STATE_TYPES.join(", ")}`);
+  if (typeof stateType !== "string" || !VALID_STATE_TYPES.includes(stateType)) {
+    report("invalid-state-type", `${pointer}/Type`, `State "${stateName}" has invalid Type: "${stateType}". Valid types: ${VALID_STATE_TYPES.join(", ")}`);
+    return;
+  }
   if ("Next" in state2 && state2.Next !== void 0) {
-    if (typeof state2.Next !== "string") fail(`State "${stateName}": Next must be a string`);
-    if (!stateNames.has(state2.Next)) fail(`State "${stateName}": Next references non-existent state "${state2.Next}"`);
+    if (typeof state2.Next !== "string") report("invalid-field", `${pointer}/Next`, `State "${stateName}": Next must be a string`);
+    else if (!stateNames.has(state2.Next)) report("dangling-transition", `${pointer}/Next`, `State "${stateName}": Next references non-existent state "${state2.Next}"`);
   }
   if ("Default" in state2 && state2.Default !== void 0) {
-    if (typeof state2.Default !== "string") fail(`State "${stateName}": Default must be a string`);
-    if (!stateNames.has(state2.Default)) fail(`State "${stateName}": Default references non-existent state "${state2.Default}"`);
+    if (typeof state2.Default !== "string") report("invalid-field", `${pointer}/Default`, `State "${stateName}": Default must be a string`);
+    else if (!stateNames.has(state2.Default)) report("dangling-transition", `${pointer}/Default`, `State "${stateName}": Default references non-existent state "${state2.Default}"`);
   }
   for (const arrayField of [
     "Choices",
     "Catch",
     "Retry"
-  ]) if (state2[arrayField] !== void 0 && !Array.isArray(state2[arrayField])) fail(`State "${stateName}": ${arrayField} must be an array`);
+  ]) if (state2[arrayField] !== void 0 && !Array.isArray(state2[arrayField])) report("invalid-field", `${pointer}/${arrayField}`, `State "${stateName}": ${arrayField} must be an array`);
   if (Array.isArray(state2.Choices)) {
     for (const [index, choice] of state2.Choices.entries()) if (choice && typeof choice === "object" && "Next" in choice) {
       const choiceNext = choice.Next;
-      if (typeof choiceNext === "string" && !stateNames.has(choiceNext)) fail(`State "${stateName}": Choices[${index}].Next references non-existent state "${choiceNext}"`);
+      if (typeof choiceNext === "string" && !stateNames.has(choiceNext)) report("dangling-transition", `${pointer}/Choices/${index}/Next`, `State "${stateName}": Choices[${index}].Next references non-existent state "${choiceNext}"`);
     }
   }
   if (Array.isArray(state2.Catch)) {
     for (const [index, catchBlock] of state2.Catch.entries()) if (catchBlock && typeof catchBlock === "object" && "Next" in catchBlock) {
       const catchNext = catchBlock.Next;
-      if (typeof catchNext === "string" && !stateNames.has(catchNext)) fail(`State "${stateName}": Catch[${index}].Next references non-existent state "${catchNext}"`);
+      if (typeof catchNext === "string" && !stateNames.has(catchNext)) report("dangling-transition", `${pointer}/Catch/${index}/Next`, `State "${stateName}": Catch[${index}].Next references non-existent state "${catchNext}"`);
     }
   }
   if (!["Succeed", "Fail"].includes(stateType) && stateType !== "Choice") {
     const hasNext = "Next" in state2;
     const hasEnd = "End" in state2 && state2.End === true;
-    if (!hasNext && !hasEnd) fail(`State "${stateName}" (Type: ${stateType}) must have either "Next" or "End: true"`);
+    if (!hasNext && !hasEnd) report("missing-transition", pointer, `State "${stateName}" (Type: ${stateType}) must have either "Next" or "End: true"`);
   }
+  sink.onState?.({
+    machineQueryLanguage,
+    pointer,
+    scope,
+    state: state2,
+    stateName,
+    stateNames
+  });
 }
 function parseAsl(params) {
   const { definition, options } = params;
@@ -67624,8 +67882,10 @@ function parseAsl(params) {
   validateAsl({ definition });
   const nodeIndex = /* @__PURE__ */ new Map();
   const resolver = buildIdResolver({ definition });
+  const machineQueryLanguage = definition.QueryLanguage;
   extractStatesRecursively({
     definition,
+    machineQueryLanguage,
     nodeIndex,
     nodes: nodes5,
     options,
@@ -67635,6 +67895,7 @@ function parseAsl(params) {
   for (const [stateName, state2] of Object.entries(definition.States)) {
     const stateEdges = extractEdgesFromState({
       catchLabelStyle: options?.catchLabelStyle,
+      machineQueryLanguage,
       resolveId: (name) => resolver.resolve("", name),
       state: state2,
       stateName
@@ -67644,6 +67905,7 @@ function parseAsl(params) {
   extractNestedEdges({
     definition,
     edges,
+    machineQueryLanguage,
     options,
     resolver,
     scope: ""
@@ -67662,8 +67924,12 @@ function stripJsonPathSuffix(key) {
   return key.endsWith(JSONPATH_KEY_SUFFIX) ? key.slice(0, -2) : key;
 }
 function createStateNode(params) {
-  const { id, name, options, state: state2, stylePreset } = params;
+  const { id, machineQueryLanguage, name, options, state: state2, stylePreset } = params;
   const isContainer = hasNestedStates(state2);
+  const queryLanguage = resolveQueryLanguage({
+    machineQueryLanguage,
+    state: state2
+  });
   const baseNode = {
     id,
     isContainer,
@@ -67674,36 +67940,76 @@ function createStateNode(params) {
     }),
     type: state2.Type
   };
-  const assignedVariables = Object.keys(state2.Assign ?? {}).map(stripJsonPathSuffix);
+  const assignKeys = Object.keys(state2.Assign ?? {});
+  const assignedVariables = queryLanguage === "JSONPath" ? assignKeys.map(stripJsonPathSuffix) : assignKeys;
   if (assignedVariables.length > 0) baseNode.assignedVariables = assignedVariables;
+  const argumentsLabel = getArgumentsLabel({
+    queryLanguage,
+    state: state2
+  });
+  if (argumentsLabel !== "") baseNode.inputArguments = argumentsLabel;
+  const outputLabel = getOutputLabel({
+    queryLanguage,
+    state: state2
+  });
+  if (outputLabel !== "") baseNode.output = outputLabel;
   if (state2.Type === "Wait") {
-    const waitDuration = getWaitDurationLabel(state2);
+    const waitDuration = getWaitDurationLabel({
+      queryLanguage,
+      state: state2
+    });
     if (waitDuration !== "") baseNode.waitDuration = waitDuration;
   }
   if (state2.Type === "Task") {
     const integrationPattern = getTaskIntegrationPatternLabel(state2);
     if (integrationPattern !== "") baseNode.integrationPattern = integrationPattern;
-    const taskTimeout = getTaskTimeoutLabel(state2);
+    const taskTimeout = getTaskTimeoutLabel({
+      queryLanguage,
+      state: state2
+    });
     if (taskTimeout !== "") baseNode.taskTimeout = taskTimeout;
-    const taskHeartbeat = getTaskHeartbeatLabel(state2);
+    const taskHeartbeat = getTaskHeartbeatLabel({
+      queryLanguage,
+      state: state2
+    });
     if (taskHeartbeat !== "") baseNode.taskHeartbeat = taskHeartbeat;
   }
   if (state2.Type === "Fail") {
-    const failError = getFailErrorLabel(state2);
+    const failError = getFailErrorLabel({
+      queryLanguage,
+      state: state2
+    });
     if (failError !== "") baseNode.failError = failError;
-    const failCause = getFailCauseLabel(state2);
+    const failCause = getFailCauseLabel({
+      queryLanguage,
+      state: state2
+    });
     if (failCause !== "") baseNode.failCause = failCause;
   }
   if (isContainer) baseNode.children = [];
   if (state2.Type === "Map") {
     if (getMapProcessor(state2)?.ProcessorConfig?.Mode === "DISTRIBUTED") baseNode.isDistributedMap = true;
-    if (state2.MaxConcurrency !== void 0) baseNode.maxConcurrency = state2.MaxConcurrency;
-    const toleratedFailure = getToleratedFailureLabel(state2);
+    if (typeof state2.MaxConcurrency === "string") baseNode.maxConcurrency = unwrapExpression({
+      queryLanguage,
+      value: state2.MaxConcurrency
+    });
+    else if (state2.MaxConcurrency !== void 0) baseNode.maxConcurrency = state2.MaxConcurrency;
+    const toleratedFailure = getToleratedFailureLabel({
+      queryLanguage,
+      state: state2
+    });
     if (toleratedFailure !== "") baseNode.toleratedFailure = toleratedFailure;
     const itemBatching = getItemBatchingLabel(state2);
     if (itemBatching !== "") baseNode.itemBatching = itemBatching;
     const itemsPath = getItemsPathLabel(state2);
     if (itemsPath !== "") baseNode.itemsPath = itemsPath;
+    const itemSelector = getItemSelectorLabel({
+      queryLanguage,
+      state: state2
+    });
+    if (itemSelector !== "") baseNode.itemSelector = itemSelector;
+    const mapLabel = getChildExecutionLabel(state2);
+    if (mapLabel !== "") baseNode.mapLabel = mapLabel;
   }
   if (options?.showIcons && state2.Type === "Task") {
     const serviceInfo = detectService({
@@ -67718,9 +68024,13 @@ function createStateNode(params) {
   return baseNode;
 }
 function extractEdgesFromState(params) {
-  const { catchLabelStyle, resolveId, state: state2, stateName } = params;
+  const { catchLabelStyle, machineQueryLanguage, resolveId, state: state2, stateName } = params;
   const edges = [];
   const stateId = resolveId(stateName);
+  const queryLanguage = resolveQueryLanguage({
+    machineQueryLanguage,
+    state: state2
+  });
   if (state2.Type === "Map") for (const io of ITEM_IO_ROLES) {
     if (!state2[io.field]?.Resource) continue;
     const satelliteId = `${stateId}${io.idSuffix}`;
@@ -67737,7 +68047,10 @@ function extractEdgesFromState(params) {
   switch (state2.Type) {
     case "Choice":
       if (state2.Choices) state2.Choices.forEach((choice) => {
-        const condition = extractConditionLabel(choice);
+        const condition = extractConditionLabel({
+          queryLanguage,
+          rule: choice
+        });
         edges.push({
           condition,
           from: stateId,
@@ -67826,18 +68139,26 @@ function formatComparison(variable, operatorKey, value) {
   const formattedValue = !isPath && (prefix === "String" || prefix === "Timestamp") ? JSON.stringify(value) : String(value);
   return `${variable} ${operator[1]} ${formattedValue}`;
 }
-function describeChoiceRule(rule) {
-  if (rule.Condition !== void 0) return typeof rule.Condition === "string" ? stripJsonataDelimiters(rule.Condition) : String(rule.Condition);
+function describeChoiceRule(params) {
+  const { queryLanguage, rule } = params;
+  if (rule.Condition !== void 0) return typeof rule.Condition === "string" ? unwrapExpression({
+    queryLanguage,
+    value: rule.Condition
+  }) : String(rule.Condition);
+  const describeOperand = (operand) => describeChoiceRule({
+    queryLanguage,
+    rule: operand
+  });
   if (Array.isArray(rule.And)) {
-    const parts = rule.And.map(describeChoiceRule).filter(Boolean);
+    const parts = rule.And.map(describeOperand).filter(Boolean);
     return parts.length > 0 ? parts.join(" AND ") : "";
   }
   if (Array.isArray(rule.Or)) {
-    const parts = rule.Or.map(describeChoiceRule).filter(Boolean);
+    const parts = rule.Or.map(describeOperand).filter(Boolean);
     return parts.length > 0 ? parts.join(" OR ") : "";
   }
   if (rule.Not && typeof rule.Not === "object") {
-    const inner = describeChoiceRule(rule.Not);
+    const inner = describeOperand(rule.Not);
     return inner ? `NOT (${inner})` : "";
   }
   const variable = rule.Variable || "";
@@ -67847,8 +68168,8 @@ function describeChoiceRule(rule) {
   }
   return "";
 }
-function extractConditionLabel(choice) {
-  return describeChoiceRule(choice) || EDGE_LABELS.CONDITION_FALLBACK;
+function extractConditionLabel(params) {
+  return describeChoiceRule(params) || EDGE_LABELS.CONDITION_FALLBACK;
 }
 var ITEM_IO_ROLES = [{
   edgeDirection: "in",
@@ -67864,10 +68185,11 @@ var ITEM_IO_ROLES = [{
   nodeType: "ResultWriter"
 }];
 function extractStatesRecursively(params) {
-  const { definition, nodeIndex, nodes: nodes5, options, resolver, scope } = params;
+  const { definition, machineQueryLanguage, nodeIndex, nodes: nodes5, options, resolver, scope } = params;
   for (const [stateName, state2] of Object.entries(definition.States)) {
     const stateNode = createStateNode({
       id: resolver.resolve(scope, stateName),
+      machineQueryLanguage,
       name: stateName,
       options,
       state: state2,
@@ -67879,6 +68201,7 @@ function extractStatesRecursively(params) {
       const branchScope = resolver.branchScope(scope, stateName, index);
       extractStatesRecursively({
         definition: branch,
+        machineQueryLanguage,
         nodeIndex,
         nodes: nodes5,
         options,
@@ -67917,6 +68240,7 @@ function extractStatesRecursively(params) {
       const processorScope = resolver.processorScope(scope, stateName);
       extractStatesRecursively({
         definition: iterator2,
+        machineQueryLanguage,
         nodeIndex,
         nodes: nodes5,
         options,
@@ -67992,7 +68316,7 @@ function markBranchStatesAsChildren(params) {
   }
 }
 function extractNestedEdges(params) {
-  const { definition, edges, options, resolver, scope } = params;
+  const { definition, edges, machineQueryLanguage, options, resolver, scope } = params;
   for (const [stateName, state2] of Object.entries(definition.States)) {
     if (state2.Type === "Parallel" && state2.Branches) state2.Branches.forEach((branch, index) => {
       const containerId = resolver.resolve(scope, stateName);
@@ -68007,6 +68331,7 @@ function extractNestedEdges(params) {
       for (const [branchStateName, branchState] of Object.entries(branch.States)) {
         const branchEdges = extractEdgesFromState({
           catchLabelStyle: options?.catchLabelStyle,
+          machineQueryLanguage,
           resolveId: (name) => resolver.resolve(branchScope, name),
           state: branchState,
           stateName: branchStateName
@@ -68032,6 +68357,7 @@ function extractNestedEdges(params) {
       extractNestedEdges({
         definition: branch,
         edges,
+        machineQueryLanguage,
         options,
         resolver,
         scope: branchScope
@@ -68051,6 +68377,7 @@ function extractNestedEdges(params) {
       for (const [iteratorStateName, iteratorState] of Object.entries(mapProcessor.States)) {
         const iteratorEdges = extractEdgesFromState({
           catchLabelStyle: options?.catchLabelStyle,
+          machineQueryLanguage,
           resolveId: (name) => resolver.resolve(processorScope, name),
           state: iteratorState,
           stateName: iteratorStateName
@@ -68078,6 +68405,7 @@ function extractNestedEdges(params) {
       extractNestedEdges({
         definition: mapProcessor,
         edges,
+        machineQueryLanguage,
         options,
         resolver,
         scope: processorScope
@@ -68100,7 +68428,7 @@ function resolveViewerTheme(params) {
   const { theme } = params;
   if (theme === "dark") return "dark";
   if (theme === void 0 || theme === "light") return "light";
-  const luminance = hexLuminance(theme.background);
+  const luminance = hexLuminance(getTheme(theme).background);
   return luminance !== null && luminance < DARK_BACKGROUND_LUMINANCE ? "dark" : "light";
 }
 var MERMAID_LABEL_ENTITIES = {
@@ -68296,56 +68624,63 @@ var MermaidRenderer = class {
     return nodes5.find((node) => !targetNodes.has(node.id))?.id || nodes5[0]?.id || null;
   }
 };
-var DEFAULT_DIAGRAM_OPTIONS = {
-  format: "svg",
-  theme: "light",
-  customColors: void 0,
-  layout: "TB",
-  rankSeparation: 50,
-  nodeSeparation: 50,
-  width: void 0,
-  height: void 0,
-  nodeWidth: 120,
-  nodeHeight: 60,
-  padding: 20,
-  includeComments: true,
-  showStateTypes: false,
-  showVariables: true,
-  edgeStyle: "curved",
-  edgeHitAreas: false,
-  catchHandling: "show",
-  catchLabelStyle: "error-type",
-  collapse: void 0,
-  stylePreset: "aws-standard",
-  iconPosition: "left",
-  iconResolver: void 0,
-  iconSize: 24,
-  showIcons: false,
-  pngQuality: 90,
-  backgroundColor: "transparent",
-  nodeOverrides: void 0,
-  edgeOverrides: void 0,
-  nodeAnnotations: void 0,
-  diagramDescription: void 0,
-  diagramTitle: void 0
-};
-function mergeOptions(options = {}) {
+var REDACTED = "[redacted]";
+function resolve$1(answer, value) {
+  if (answer === void 0) return value === void 0 ? {
+    kept: true,
+    value
+  } : {
+    kept: false,
+    value: REDACTED
+  };
   return {
-    ...DEFAULT_DIAGRAM_OPTIONS,
-    ...options
+    kept: answer === value,
+    value: answer
   };
 }
-function parseAslArg(value) {
-  return typeof value === "string" ? JSON.parse(value) : value;
+function redactPayloadText(params) {
+  const { field, redact, stateId, text } = params;
+  if (!redact) return text;
+  const { kept, value } = resolve$1(redact({
+    kind: "payload",
+    path: `${stateId ?? "execution"}.${field}`,
+    stateId,
+    value: text
+  }), text);
+  if (kept) return text;
+  return typeof value === "string" ? value : REDACTED;
+}
+function buildDiagramGraph(params) {
+  const { definition, options } = params;
+  const parsed = parseAsl({
+    definition,
+    options
+  });
+  const { edges, nodes: nodes5 } = applyCatchHandling({
+    edges: parsed.edges,
+    mode: options.catchHandling,
+    nodes: parsed.nodes,
+    startStateId: definition.StartAt
+  });
+  return {
+    edges,
+    nodes: nodes5,
+    parsed
+  };
 }
 function stableStringify(value) {
   if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
   return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
 }
-function toOrphanState(state2) {
+function toOrphanState(params) {
+  const { machineQueryLanguage, state: state2 } = params;
   const base = {
     End: true,
+    QueryLanguage: resolveQueryLanguage({
+      machineQueryLanguage,
+      state: state2
+    }),
     Type: state2.Type
   };
   if (state2.Type === "Fail") {
@@ -68356,27 +68691,154 @@ function toOrphanState(state2) {
   }
   return base;
 }
+function withoutNestedStates(state2) {
+  if (state2.Type === "Parallel" && Array.isArray(state2.Branches)) return {
+    ...state2,
+    Branches: state2.Branches.map((branch) => ({
+      ...branch,
+      States: {}
+    }))
+  };
+  if (state2.Type === "Map") {
+    if (state2.ItemProcessor) return {
+      ...state2,
+      ItemProcessor: {
+        ...state2.ItemProcessor,
+        States: {}
+      }
+    };
+    if (state2.Iterator) return {
+      ...state2,
+      Iterator: {
+        ...state2.Iterator,
+        States: {}
+      }
+    };
+  }
+  return state2;
+}
+function pairBranches(afterBranches, beforeBranches) {
+  const unclaimed = new Set((beforeBranches ?? []).map((_2, index) => index));
+  const claim = (index) => {
+    if (index === void 0 || !unclaimed.has(index)) return void 0;
+    unclaimed.delete(index);
+    return beforeBranches[index];
+  };
+  return afterBranches.map((branch) => {
+    const match2 = (beforeBranches ?? []).findIndex((candidate, index) => unclaimed.has(index) && candidate.StartAt === branch.StartAt);
+    return claim(match2 === -1 ? void 0 : match2);
+  }).map((paired, index) => paired ?? claim(index));
+}
+function diffStates(params) {
+  const { afterStates, beforeQueryLanguage, beforeStates, classified, steps } = params;
+  const merged = {};
+  const beforeState = (name) => beforeStates !== void 0 && Object.hasOwn(beforeStates, name) ? beforeStates[name] : void 0;
+  for (const [name, afterState] of Object.entries(afterStates)) {
+    const before = beforeState(name);
+    const status = before === void 0 ? "added" : stableStringify(before) !== stableStringify(afterState) ? "modified" : "unchanged";
+    const ownChange = status !== "unchanged" && (before === void 0 || stableStringify(withoutNestedStates(before)) !== stableStringify(withoutNestedStates(afterState)));
+    classified.push({
+      name,
+      ownChange,
+      status,
+      steps
+    });
+    const beforeContainer = before?.Type === afterState.Type ? before : void 0;
+    const recurse = (block, beforeBlock, step) => ({
+      ...block,
+      States: diffStates({
+        afterStates: block.States,
+        beforeQueryLanguage,
+        beforeStates: beforeBlock?.States,
+        classified,
+        steps: [...steps, step]
+      })
+    });
+    let mergedState = afterState;
+    if (afterState.Type === "Parallel" && Array.isArray(afterState.Branches)) {
+      const paired = pairBranches(afterState.Branches, beforeContainer?.Branches);
+      mergedState = {
+        ...afterState,
+        Branches: afterState.Branches.map((branch, index) => recurse(branch, paired[index], {
+          containerName: name,
+          index,
+          kind: "branch"
+        }))
+      };
+    } else if (afterState.Type === "Map") {
+      const processor = getMapProcessor(afterState);
+      if (processor) {
+        const mergedProcessor = recurse(processor, beforeContainer ? getMapProcessor(beforeContainer) : void 0, {
+          containerName: name,
+          kind: "processor"
+        });
+        mergedState = afterState.ItemProcessor !== void 0 ? {
+          ...afterState,
+          ItemProcessor: mergedProcessor
+        } : {
+          ...afterState,
+          Iterator: mergedProcessor
+        };
+      }
+    }
+    merged[name] = mergedState;
+  }
+  for (const [name, state2] of Object.entries(beforeStates ?? {})) {
+    if (Object.hasOwn(afterStates, name)) continue;
+    classified.push({
+      name,
+      ownChange: true,
+      removedState: state2,
+      status: "removed",
+      steps
+    });
+    merged[name] = toOrphanState({
+      machineQueryLanguage: beforeQueryLanguage,
+      state: state2
+    });
+  }
+  return merged;
+}
 function computeStateDiff(beforeAsl, afterAsl) {
-  const beforeNames = new Set(Object.keys(beforeAsl.States));
-  const afterNames = new Set(Object.keys(afterAsl.States));
+  const classified = [];
+  const mergedStates = diffStates({
+    afterStates: afterAsl.States,
+    beforeQueryLanguage: beforeAsl.QueryLanguage,
+    beforeStates: beforeAsl.States,
+    classified,
+    steps: []
+  });
+  const mergedAsl = {
+    ...afterAsl,
+    States: mergedStates
+  };
+  const resolver = buildIdResolver({ definition: mergedAsl });
+  const scopeFor = (steps) => steps.reduce((scope, step) => step.kind === "branch" ? resolver.branchScope(scope, step.containerName, step.index) : resolver.processorScope(scope, step.containerName), "");
   const added = [];
   const modified = [];
+  const ownChanges = [];
   const removed = [];
   const unchanged = [];
-  for (const name of afterNames) if (!beforeNames.has(name)) added.push(name);
-  else if (stableStringify(beforeAsl.States[name]) !== stableStringify(afterAsl.States[name])) modified.push(name);
-  else unchanged.push(name);
-  for (const name of beforeNames) if (!afterNames.has(name)) removed.push(name);
-  const mergedStates = { ...afterAsl.States };
-  for (const name of removed) mergedStates[name] = toOrphanState(beforeAsl.States[name]);
-  return {
+  const removedStates = {};
+  const buckets = {
     added,
-    mergedAsl: {
-      ...afterAsl,
-      States: mergedStates
-    },
     modified,
     removed,
+    unchanged
+  };
+  for (const { name, ownChange, removedState, status, steps } of classified) {
+    const id = resolver.resolve(scopeFor(steps), name);
+    buckets[status].push(id);
+    if (ownChange) ownChanges.push(id);
+    if (removedState) removedStates[id] = removedState;
+  }
+  return {
+    added,
+    mergedAsl,
+    modified,
+    ownChanges,
+    removed,
+    removedStates,
     unchanged
   };
 }
@@ -68389,7 +68851,7 @@ function buildStatusMap(diff) {
 }
 function generateMermaidDiff(params) {
   const { after: afterArg, before: beforeArg, layout, theme } = params;
-  const diff = computeStateDiff(parseAslArg(beforeArg), parseAslArg(afterArg));
+  const diff = computeStateDiff(parseAslSource({ source: beforeArg }), parseAslSource({ source: afterArg }));
   const { added, mergedAsl, modified, removed, unchanged } = diff;
   const { edges, nodes: nodes5 } = parseAsl({ definition: mergedAsl });
   const { code, metadata } = new MermaidRenderer().render({
@@ -68426,6 +68888,34 @@ var FAILURE_EVENT_TYPES = /* @__PURE__ */ new Set([
   "TaskSubmitFailed",
   "TaskTimedOut"
 ]);
+var CONTAINER_FAILURE_EVENT_TYPES = /* @__PURE__ */ new Map([
+  ["MapRunFailed", {
+    enteredType: "MapStateEntered",
+    terminal: false
+  }],
+  ["MapStateFailed", {
+    enteredType: "MapStateEntered",
+    terminal: true
+  }],
+  ["ParallelStateFailed", {
+    enteredType: "ParallelStateEntered",
+    terminal: true
+  }]
+]);
+var CONTAINER_START_EVENT_TYPES = /* @__PURE__ */ new Map([
+  ["MapRunStarted", "MapStateEntered"],
+  ["MapStateStarted", "MapStateEntered"],
+  ["ParallelStateStarted", "ParallelStateEntered"]
+]);
+var ATTEMPT_START_EVENT_TYPES = /* @__PURE__ */ new Set([
+  "ActivityScheduled",
+  "ActivityStarted",
+  "LambdaFunctionScheduled",
+  "LambdaFunctionStarted",
+  "TaskScheduled",
+  "TaskStarted",
+  "TaskSubmitted"
+]);
 var SUCCESS_EVENT_TYPES = /* @__PURE__ */ new Set([
   "ActivitySucceeded",
   "LambdaFunctionSucceeded",
@@ -68456,7 +68946,53 @@ function exitedName(event) {
   return event.stateExitedEventDetails?.name;
 }
 function extractError(event) {
-  return event.taskFailedEventDetails?.error ?? event.lambdaFunctionFailedEventDetails?.error ?? event.activityFailedEventDetails?.error ?? event.executionFailedEventDetails?.error ?? event.taskTimedOutEventDetails?.error ?? event.lambdaFunctionTimedOutEventDetails?.error ?? event.evaluationFailedEventDetails?.error ?? void 0;
+  return event.taskFailedEventDetails?.error ?? event.lambdaFunctionFailedEventDetails?.error ?? event.activityFailedEventDetails?.error ?? event.executionFailedEventDetails?.error ?? event.taskTimedOutEventDetails?.error ?? event.lambdaFunctionTimedOutEventDetails?.error ?? event.evaluationFailedEventDetails?.error ?? event.mapRunFailedEventDetails?.error ?? void 0;
+}
+function extractCause(event) {
+  return event.taskFailedEventDetails?.cause ?? event.lambdaFunctionFailedEventDetails?.cause ?? event.activityFailedEventDetails?.cause ?? event.executionFailedEventDetails?.cause ?? event.taskTimedOutEventDetails?.cause ?? event.lambdaFunctionTimedOutEventDetails?.cause ?? event.evaluationFailedEventDetails?.cause ?? event.mapRunFailedEventDetails?.cause ?? void 0;
+}
+var EXECUTION_PAYLOAD_CAP = 4096;
+function createPayloadCapture(params) {
+  const { redact } = params;
+  let spent = 0;
+  return ({ field, raw, stateId }) => {
+    if (raw === void 0 || spent >= 262144) return void 0;
+    const redacted = redactPayloadText({
+      field,
+      redact,
+      stateId,
+      text: raw
+    });
+    const text = redacted.length <= 4096 ? redacted : redacted.slice(0, EXECUTION_PAYLOAD_CAP);
+    spent += text.length;
+    return text.length === redacted.length ? { text } : {
+      text,
+      truncatedFrom: redacted.length
+    };
+  };
+}
+var CONTAINER_ENTERED_TYPES = /* @__PURE__ */ new Set(["MapStateEntered", "ParallelStateEntered"]);
+function buildChildScopes(params) {
+  const { definition, resolver } = params;
+  const childScopes = /* @__PURE__ */ new Map();
+  const visit = (current, scope) => {
+    for (const [stateName, state2] of Object.entries(current.States)) {
+      const containerId = resolver.resolve(scope, stateName);
+      const record = (child, childScope) => {
+        const scopesByName = childScopes.get(containerId) ?? /* @__PURE__ */ new Map();
+        for (const childName of Object.keys(child.States)) if (!scopesByName.has(childName)) scopesByName.set(childName, childScope);
+        childScopes.set(containerId, scopesByName);
+        visit(child, childScope);
+      };
+      if (state2.Type === "Parallel" && Array.isArray(state2.Branches)) state2.Branches.forEach((branch, index) => record(branch, resolver.branchScope(scope, stateName, index)));
+      if (state2.Type === "Map") {
+        const processor = getMapProcessor(state2);
+        if (processor) record(processor, resolver.processorScope(scope, stateName));
+      }
+    }
+  };
+  visit(definition, "");
+  return childScopes;
 }
 function mergeStatus(current, incoming) {
   const rank = {
@@ -68469,16 +69005,33 @@ function mergeStatus(current, incoming) {
   if (!current) return incoming;
   return rank[incoming] > rank[current] ? incoming : current;
 }
-function parseExecutionHistory(params) {
-  const { events } = params;
+function walkExecutionHistory(params) {
+  const { definition, events, includePayloads = false, redact } = params;
   const eventById = /* @__PURE__ */ new Map();
   for (const event of events) if (event.id !== void 0) eventById.set(event.id, event);
   const results = {};
   const openStack = [];
   const takenSet = /* @__PURE__ */ new Set();
   const takenEdges = [];
+  const entries = [];
   let executionStatus = "running";
   let startState;
+  const capturePayload = createPayloadCapture({ redact });
+  const resolver = definition ? buildIdResolver({ definition }) : void 0;
+  const childScopes = definition && resolver ? buildChildScopes({
+    definition,
+    resolver
+  }) : void 0;
+  let lastKnownMs = 0;
+  let startMs;
+  const eventMs = (event) => {
+    const millis = toMillis(event.timestamp);
+    if (millis !== void 0) {
+      lastKnownMs = millis;
+      if (startMs === void 0) startMs = millis;
+    }
+    return lastKnownMs;
+  };
   const findFromState = (event) => {
     let cursorId = event.previousEventId;
     const seen = /* @__PURE__ */ new Set();
@@ -68499,18 +69052,96 @@ function parseExecutionHistory(params) {
     };
     return results[name];
   };
+  const findFrameIndex = (predicate) => {
+    for (let i5 = openStack.length - 1; i5 >= 0; i5--) if (predicate(openStack[i5])) return i5;
+    return -1;
+  };
+  const frameForEvent = (event) => {
+    let cursorId = event.previousEventId;
+    const seen = /* @__PURE__ */ new Set();
+    while (cursorId !== void 0 && !seen.has(cursorId)) {
+      seen.add(cursorId);
+      const owner = openStack.find((frame) => frame.enteredEventId === cursorId);
+      if (owner) return owner;
+      const prev = eventById.get(cursorId);
+      if (!prev?.type) return void 0;
+      if (prev.type.endsWith("StateEntered") || prev.type.endsWith("StateExited")) return;
+      if (EDGE_WALK_BOUNDARY_TYPES.has(prev.type)) return void 0;
+      cursorId = prev.previousEventId;
+    }
+  };
+  const openContainer = () => {
+    const index = findFrameIndex((frame) => CONTAINER_ENTERED_TYPES.has(frame.enteredType));
+    return index >= 0 ? openStack[index] : void 0;
+  };
+  const stampChildCount = (frame, entry) => {
+    if (frame.enteredType === "ParallelStateEntered") entry.branchCount = frame.childStarts;
+    if (frame.enteredType === "MapStateEntered") entry.iterationCount = frame.childStarts;
+  };
+  const openEntry = (frame, ms, attempt, fromNodeId) => {
+    frame.childStarts = 0;
+    frame.lastEntryIndex = entries.length;
+    frame.openEntryIndex = entries.length;
+    entries.push({
+      attempt,
+      enteredMs: ms,
+      ...fromNodeId !== void 0 ? { fromNodeId } : {},
+      ...frame.payloadInput !== void 0 ? { input: frame.payloadInput } : {},
+      nodeId: frame.nodeId,
+      stateName: frame.name,
+      status: "running"
+    });
+  };
+  const closeEntry = (frame, ms, status, error2, payloads) => {
+    if (frame.openEntryIndex === void 0) return;
+    const entry = entries[frame.openEntryIndex];
+    entry.exitedMs = ms;
+    entry.status = status;
+    if (error2 !== void 0 && entry.error === void 0) entry.error = redactPayloadText({
+      field: "error",
+      redact,
+      stateId: frame.nodeId,
+      text: error2
+    });
+    if (payloads?.cause !== void 0) entry.cause = payloads.cause;
+    if (payloads?.output !== void 0) entry.output = payloads.output;
+    stampChildCount(frame, entry);
+    frame.openEntryIndex = void 0;
+  };
+  const closeAsFailed = (frame, ms, fallbackError, cause) => {
+    const result = ensure2(frame.name);
+    result.status = mergeStatus(result.status, "failed");
+    result.attempts += Math.max(frame.failures, 1);
+    const error2 = frame.error ?? fallbackError;
+    if (error2 && !result.error) result.error = error2;
+    closeEntry(frame, ms, "failed", error2, { cause: frame.payloadCause ?? cause });
+  };
   for (const event of events) {
     const type = event.type ?? "";
+    const nowMs = eventMs(event);
     if (type.endsWith("StateEntered")) {
       const name = enteredName(event);
       if (!name) continue;
       if (!startState) startState = name;
       ensure2(name);
-      openStack.push({
+      const parent = openContainer();
+      const scope = parent ? childScopes?.get(parent.nodeId)?.get(name) ?? "" : "";
+      const frame = {
+        childStarts: 0,
+        enteredEventId: event.id,
+        enteredMs: toMillis(event.timestamp),
+        enteredType: type,
         failures: 0,
+        lastEntryIndex: -1,
         name,
-        enteredMs: toMillis(event.timestamp)
-      });
+        nodeId: resolver ? resolver.resolve(scope, name) : name,
+        ...includePayloads ? { payloadInput: capturePayload({
+          field: "input",
+          raw: event.stateEnteredEventDetails?.input,
+          stateId: resolver ? resolver.resolve(scope, name) : name
+        }) } : {}
+      };
+      openStack.push(frame);
       const from = findFromState(event);
       if (from) {
         const key = `${from}->${name}`;
@@ -68522,21 +69153,21 @@ function parseExecutionHistory(params) {
           });
         }
       }
+      openEntry(frame, nowMs, 1, from !== void 0 && resolver ? resolver.resolve(scope, from) : from);
+      if (parent && from === void 0) parent.childStarts += 1;
       if (type === "FailStateEntered") {
         const result = ensure2(name);
         result.status = "failed";
         result.attempts = Math.max(result.attempts, 1);
+        closeEntry(frame, nowMs, "failed");
       }
       continue;
     }
     if (type.endsWith("StateExited")) {
       const name = exitedName(event);
       if (!name) continue;
-      let frameIndex = -1;
-      for (let i5 = openStack.length - 1; i5 >= 0; i5--) if (openStack[i5].name === name) {
-        frameIndex = i5;
-        break;
-      }
+      const owner = frameForEvent(event);
+      const frameIndex = owner?.name === name ? openStack.indexOf(owner) : findFrameIndex((candidate) => candidate.name === name);
       const frame = frameIndex >= 0 ? openStack.splice(frameIndex, 1)[0] : void 0;
       const result = ensure2(name);
       const exitMs = toMillis(event.timestamp);
@@ -68546,31 +69177,89 @@ function parseExecutionHistory(params) {
       result.attempts += Math.max(failures + (wasCaught ? 0 : 1), 1);
       result.status = mergeStatus(result.status, wasCaught ? "caught" : "succeeded");
       if (frame?.error && !result.error) result.error = frame.error;
+      if (frame) {
+        if (frame.openEntryIndex !== void 0) closeEntry(frame, exitMs ?? nowMs, "succeeded", void 0, { output: includePayloads ? capturePayload({
+          field: "output",
+          raw: event.stateExitedEventDetails?.output,
+          stateId: frame.nodeId
+        }) : void 0 });
+        else if (frame.lastEntryIndex >= 0 && wasCaught) entries[frame.lastEntryIndex].status = "caught";
+      }
       continue;
     }
-    const activeFrame = openStack[openStack.length - 1];
+    const containerFailure = CONTAINER_FAILURE_EVENT_TYPES.get(type);
+    if (containerFailure) {
+      const containerIndex = findFrameIndex((frame) => frame.enteredType === containerFailure.enteredType && !frame.failureClosed);
+      if (containerIndex >= 0) {
+        const eventError = extractError(event);
+        const rawCause = extractCause(event);
+        const causeFor = (frame) => includePayloads ? capturePayload({
+          field: "cause",
+          raw: rawCause,
+          stateId: frame.nodeId
+        }) : void 0;
+        const leaves = openStack.splice(containerIndex + 1);
+        for (const leaf of leaves) closeAsFailed(leaf, nowMs, eventError, leaf.payloadCause ? void 0 : causeFor(leaf));
+        const failingLeaf = leaves.find((leaf) => leaf.lastOutcome === "failure");
+        const leafError = failingLeaf?.error;
+        const container = openStack[containerIndex];
+        if (!container.failureCounted) {
+          container.failures += 1;
+          container.failureCounted = true;
+        }
+        container.lastOutcome = "failure";
+        container.error = container.error ?? eventError ?? leafError;
+        if (containerFailure.terminal) container.failureClosed = true;
+        closeEntry(container, nowMs, "failed", eventError ?? leafError, { cause: causeFor(container) ?? failingLeaf?.payloadCause });
+      }
+      continue;
+    }
+    const startedEnteredType = CONTAINER_START_EVENT_TYPES.get(type);
+    if (startedEnteredType) {
+      const containerIndex = findFrameIndex((frame) => frame.enteredType === startedEnteredType);
+      if (containerIndex >= 0) {
+        const container = openStack[containerIndex];
+        container.failureClosed = false;
+        container.failureCounted = false;
+        if (container.openEntryIndex === void 0) openEntry(container, nowMs, container.failures + 1);
+      }
+      continue;
+    }
+    const activeFrame = frameForEvent(event) ?? openStack[openStack.length - 1];
+    if (activeFrame !== void 0 && activeFrame.openEntryIndex === void 0 && ATTEMPT_START_EVENT_TYPES.has(type)) openEntry(activeFrame, nowMs, activeFrame.failures + 1);
     if (FAILURE_EVENT_TYPES.has(type)) {
       if (activeFrame) {
+        if (activeFrame.openEntryIndex === void 0) openEntry(activeFrame, nowMs, activeFrame.failures + 1);
         activeFrame.failures += 1;
         activeFrame.lastOutcome = "failure";
         activeFrame.error = extractError(event) ?? activeFrame.error;
+        const cause = includePayloads ? capturePayload({
+          field: "cause",
+          raw: extractCause(event),
+          stateId: activeFrame.nodeId
+        }) : void 0;
+        activeFrame.payloadCause = cause ?? activeFrame.payloadCause;
+        closeEntry(activeFrame, nowMs, "failed", extractError(event), { cause });
       }
       continue;
     }
     if (SUCCESS_EVENT_TYPES.has(type)) {
-      if (activeFrame) activeFrame.lastOutcome = "success";
+      if (activeFrame) {
+        activeFrame.lastOutcome = "success";
+        if (activeFrame.openEntryIndex === void 0) openEntry(activeFrame, nowMs, activeFrame.failures + 1);
+      }
       continue;
     }
     if (type === "ExecutionSucceeded") executionStatus = "succeeded";
     else if (type === "ExecutionFailed" || type === "ExecutionAborted" || type === "ExecutionTimedOut") {
       executionStatus = type === "ExecutionFailed" ? "failed" : type === "ExecutionAborted" ? "aborted" : "timedOut";
       const execError = extractError(event);
-      for (const frame of openStack) {
-        const result = ensure2(frame.name);
-        result.status = mergeStatus(result.status, "failed");
-        result.attempts += Math.max(frame.failures, 1);
-        if (execError && !result.error) result.error = execError;
-      }
+      const rawExecCause = extractCause(event);
+      for (const frame of openStack) closeAsFailed(frame, nowMs, execError, frame.payloadCause || !includePayloads ? void 0 : capturePayload({
+        field: "cause",
+        raw: rawExecCause,
+        stateId: frame.nodeId
+      }));
       openStack.length = 0;
     }
   }
@@ -68578,12 +69267,22 @@ function parseExecutionHistory(params) {
     const result = ensure2(frame.name);
     result.status = mergeStatus(result.status, "running");
     result.attempts += Math.max(frame.failures, 1);
+    if (frame.openEntryIndex !== void 0) stampChildCount(frame, entries[frame.openEntryIndex]);
   }
   return {
-    executionStatus,
-    startState,
-    states: results,
-    takenEdges
+    overlay: {
+      executionStatus,
+      startState,
+      states: results,
+      takenEdges
+    },
+    resolver,
+    timeline: {
+      endMs: lastKnownMs,
+      entries,
+      startMs: startMs ?? 0,
+      status: executionStatus
+    }
   };
 }
 function formatDuration(durationMs) {
@@ -68609,8 +69308,13 @@ function summarize(overlay, allStateNames) {
   for (const name of allStateNames) if (!overlay.states[name]) summary.notReached.push(name);
   return summary;
 }
-function computeOverlay(history) {
-  return parseExecutionHistory({ events: normalizeEvents(history) });
+function computeExecutionWalk(definition, history, includePayloads, redact) {
+  return walkExecutionHistory({
+    definition,
+    events: normalizeEvents(history),
+    includePayloads,
+    redact
+  });
 }
 function byNodeId(byStateName, idsForName) {
   const result = {};
@@ -68619,10 +69323,11 @@ function byNodeId(byStateName, idsForName) {
 }
 function generateMermaidExecution(params) {
   const { aslDefinition, history, layout, theme } = params;
-  const aslObj = typeof aslDefinition === "string" ? JSON.parse(aslDefinition) : aslDefinition;
-  const overlay = computeOverlay(history);
+  const aslObj = parseAslSource({ source: aslDefinition });
+  const walk = computeExecutionWalk(aslObj, history);
+  const { overlay, timeline } = walk;
   const { nodes: nodes5, edges } = parseAsl({ definition: aslObj });
-  const resolver = buildIdResolver({ definition: aslObj });
+  const resolver = walk.resolver ?? buildIdResolver({ definition: aslObj });
   const statesByNodeId = byNodeId(overlay.states, resolver.idsForName);
   const executionClasses = {};
   const nodeAnnotations = {};
@@ -68649,28 +69354,210 @@ function generateMermaidExecution(params) {
       ...summarize(overlay, Object.keys(aslObj.States)),
       edgeCount: metadata.edgeCount,
       executionStatus: overlay.executionStatus,
-      stateCount: metadata.stateCount
+      stateCount: metadata.stateCount,
+      timeline
     }
   };
 }
+var RETRY_CATCH_TYPES = /* @__PURE__ */ new Set([
+  "Map",
+  "Parallel",
+  "Task"
+]);
+var JSONPATH_ONLY_FIELDS = [
+  "CausePath",
+  "ErrorPath",
+  "HeartbeatSecondsPath",
+  "InputPath",
+  "ItemsPath",
+  "MaxConcurrencyPath",
+  "OutputPath",
+  "Parameters",
+  "ResultPath",
+  "ResultSelector",
+  "SecondsPath",
+  "TimeoutSecondsPath",
+  "TimestampPath",
+  "ToleratedFailureCountPath",
+  "ToleratedFailurePercentagePath"
+];
+var JSONATA_ONLY_FIELDS = [
+  "Arguments",
+  "Items",
+  "Output"
+];
+var RULE_FIELDS = {
+  JSONPath: [
+    "Variable",
+    "And",
+    "Or",
+    "Not"
+  ].concat([
+    "String",
+    "Numeric",
+    "Boolean",
+    "Timestamp"
+  ].flatMap((kind) => [
+    "Equals",
+    "LessThan",
+    "GreaterThan",
+    "LessThanEquals",
+    "GreaterThanEquals",
+    "Matches"
+  ].flatMap((operator) => [`${kind}${operator}`, `${kind}${operator}Path`])), [
+    "IsPresent",
+    "IsNull",
+    "IsNumeric",
+    "IsString",
+    "IsBoolean",
+    "IsTimestamp"
+  ]),
+  JSONata: ["Condition"]
+};
+function transitionTargets(state2) {
+  const targets = [];
+  if (typeof state2.Next === "string") targets.push(state2.Next);
+  if (typeof state2.Default === "string") targets.push(state2.Default);
+  for (const field of ["Choices", "Catch"]) {
+    const entries = state2[field];
+    if (!Array.isArray(entries)) continue;
+    for (const entry of entries) if (entry && typeof entry === "object" && typeof entry.Next === "string") targets.push(entry.Next);
+  }
+  return targets;
+}
+function lintState(context3, diagnostics) {
+  const { machineQueryLanguage, pointer, scope, state: state2, stateName } = context3;
+  const qualify = (text) => scope === "" ? text : `${scope}: ${text}`;
+  const push = (diagnostic) => {
+    diagnostics.push({
+      ...diagnostic,
+      message: qualify(diagnostic.message)
+    });
+  };
+  const stateType = state2.Type;
+  if (state2.End === true && "Next" in state2 && state2.Next !== void 0) push({
+    code: "end-with-next",
+    message: `State "${stateName}" sets both "End: true" and "Next"`,
+    path: `${pointer}/Next`,
+    severity: "error"
+  });
+  for (const field of ["Retry", "Catch"]) if (state2[field] !== void 0 && !RETRY_CATCH_TYPES.has(stateType)) push({
+    code: "unsupported-retry-catch",
+    message: `State "${stateName}" (Type: ${stateType}) does not support ${field}; only Task, Parallel and Map do`,
+    path: `${pointer}/${field}`,
+    severity: "error"
+  });
+  if (stateType === "Choice" && state2.Default === void 0) push({
+    code: "choice-without-default",
+    message: `Choice state "${stateName}" has no Default; an input matching no rule fails the execution`,
+    path: pointer,
+    severity: "warning"
+  });
+  if (machineQueryLanguage === "JSONata" && state2.QueryLanguage === "JSONPath") push({
+    code: "query-language-mismatch",
+    message: `State "${stateName}" sets QueryLanguage to JSONPath inside a JSONata state machine; only JSONPath machines may override per state`,
+    path: `${pointer}/QueryLanguage`,
+    severity: "error"
+  });
+  const queryLanguage = resolveQueryLanguage({
+    machineQueryLanguage,
+    state: state2
+  });
+  const otherLanguage = queryLanguage === "JSONata" ? "JSONPath" : "JSONata";
+  const foreignFields = queryLanguage === "JSONata" ? JSONPATH_ONLY_FIELDS : JSONATA_ONLY_FIELDS;
+  for (const field of foreignFields) if (state2[field] !== void 0) push({
+    code: "query-language-mismatch",
+    message: `State "${stateName}" is in ${queryLanguage} mode but uses the ${otherLanguage}-only field "${field}"`,
+    path: `${pointer}/${field}`,
+    severity: "error"
+  });
+  if (stateType === "Choice" && Array.isArray(state2.Choices)) for (const [index, rule] of state2.Choices.entries()) {
+    if (!rule || typeof rule !== "object") continue;
+    const foreign = RULE_FIELDS[otherLanguage].find((field) => rule[field] !== void 0);
+    if (foreign !== void 0) push({
+      code: "query-language-mismatch",
+      message: `State "${stateName}" is in ${queryLanguage} mode but Choices[${index}] uses the ${otherLanguage}-only field "${foreign}"`,
+      path: `${pointer}/Choices/${index}/${foreign}`,
+      severity: "error"
+    });
+  }
+}
+function lintScope(context3, diagnostics) {
+  const { pointer, scope, startAt, states } = context3;
+  if (startAt === void 0) return;
+  const reached = /* @__PURE__ */ new Set();
+  const queue = [startAt];
+  while (queue.length > 0) {
+    const name = queue.pop();
+    if (reached.has(name) || !Object.hasOwn(states, name)) continue;
+    reached.add(name);
+    const state2 = states[name];
+    if (state2 && typeof state2 === "object") queue.push(...transitionTargets(state2));
+  }
+  for (const name of Object.keys(states)) {
+    if (reached.has(name)) continue;
+    const text = `State "${name}" is unreachable from StartAt "${startAt}"`;
+    diagnostics.push({
+      code: "unreachable-state",
+      message: scope === "" ? text : `${scope}: ${text}`,
+      path: `${pointer}/States/${escapePointerToken(name)}`,
+      severity: "warning"
+    });
+  }
+}
+function lintAsl(params) {
+  const diagnostics = [];
+  let definition;
+  try {
+    definition = parseAslSource({ source: params.definition });
+  } catch (error2) {
+    return [{
+      code: "invalid-json",
+      message: error2 instanceof Error ? error2.message : String(error2),
+      path: "",
+      severity: "error"
+    }];
+  }
+  const firstUse = /* @__PURE__ */ new Map();
+  runValidation({
+    definition,
+    sink: {
+      onScope: (context3) => {
+        lintScope(context3, diagnostics);
+        for (const name of Object.keys(context3.states)) {
+          const path2 = `${context3.pointer}/States/${escapePointerToken(name)}`;
+          const previous = firstUse.get(name);
+          if (previous === void 0) {
+            firstUse.set(name, path2);
+            continue;
+          }
+          const text = `State name "${name}" is also used at ${previous}`;
+          diagnostics.push({
+            code: "duplicate-state-name",
+            message: context3.scope === "" ? text : `${context3.scope}: ${text}`,
+            path: path2,
+            severity: "warning"
+          });
+        }
+      },
+      onState: (context3) => lintState(context3, diagnostics),
+      report: (diagnostic) => diagnostics.push(diagnostic)
+    }
+  });
+  return diagnostics;
+}
 function generateMermaid(params) {
   const { aslDefinition, ...options } = params;
-  const aslObj = typeof aslDefinition === "string" ? JSON.parse(aslDefinition) : aslDefinition;
+  const aslObj = parseAslSource({ source: aslDefinition });
   const mergedOptions = mergeOptions(options);
-  const { nodes: nodes5, edges } = parseAsl({
+  const { edges, nodes: nodes5 } = buildDiagramGraph({
     definition: aslObj,
     options: mergedOptions
   });
-  const graph = applyCatchHandling({
-    edges,
-    mode: mergedOptions.catchHandling,
-    nodes: nodes5,
-    startStateId: aslObj.StartAt
-  });
   const collapsedGraph = applyCollapse({
     collapse: mergedOptions.collapse,
-    edges: graph.edges,
-    nodes: graph.nodes
+    edges,
+    nodes: nodes5
   });
   return new MermaidRenderer().render({
     asl: aslObj,
@@ -68699,10 +69586,48 @@ function matchesPatterns(filepath, patterns) {
 function formatStateList(names) {
   return names.map((name) => `\`${name}\``).join(", ");
 }
+function escapeMarkdownCell(text) {
+  return text.replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
+}
+var LINT_ERROR_DIAGRAM_NOTE = "> \u274C Diagram omitted \u2014 the definition has errors Step Functions would reject";
+function hasLintErrors(diagnostics) {
+  return diagnostics.some((diagnostic) => diagnostic.severity === "error");
+}
+function buildLintSection(diagnostics) {
+  if (diagnostics.length === 0) return "";
+  const errors = diagnostics.filter((diagnostic) => diagnostic.severity === "error").length;
+  const warnings = diagnostics.length - errors;
+  const plural = (count, noun) => `${count} ${noun}${count === 1 ? "" : "s"}`;
+  return `<details>
+<summary>\u{1F50D} Lint: ${[errors > 0 ? `\u274C ${plural(errors, "error")}` : "", warnings > 0 ? `\u26A0\uFE0F ${plural(warnings, "warning")}` : ""].filter(Boolean).join(", ")}</summary>
+
+| | Path | Finding | Rule |
+|---|---|---|---|
+${diagnostics.map(({ code, message, path: path2, severity }) => `| ${severity === "error" ? "\u274C" : "\u26A0\uFE0F"} | \`${escapeMarkdownCell(path2 || "/")}\` | ${escapeMarkdownCell(message)} | \`${code}\` |`).join("\n")}
+
+</details>
+
+`;
+}
 function buildAslFileSection(change, options = {}) {
   const { afterAsl, beforeAsl, filename } = change;
   if (!afterAsl && !beforeAsl) return null;
   if (!afterAsl && beforeAsl) {
+    const deletedHeader = `### \`${filename}\`
+
+> \u26A0\uFE0F **File deleted**
+
+`;
+    if (hasLintErrors(lintAsl({ definition: beforeAsl }))) return {
+      afterAsl: null,
+      filename,
+      header: `${deletedHeader}${LINT_ERROR_DIAGRAM_NOTE}
+
+`,
+      mermaidCode: "",
+      mermaidLabel: "\u{1F4CA} Before diagram",
+      mermaidOpenByDefault: false
+    };
     const { code } = generateMermaid({
       aslDefinition: beforeAsl,
       ...options
@@ -68710,17 +69635,30 @@ function buildAslFileSection(change, options = {}) {
     return {
       afterAsl: null,
       filename,
-      header: `### \`${filename}\`
-
-> \u26A0\uFE0F **File deleted**
-
-`,
+      header: deletedHeader,
       mermaidCode: code,
       mermaidLabel: "\u{1F4CA} Before diagram",
       mermaidOpenByDefault: false
     };
   }
+  const diagnostics = lintAsl({ definition: afterAsl });
+  const lintSection = buildLintSection(diagnostics);
   if (afterAsl && !beforeAsl) {
+    const newHeader = `### \`${filename}\`
+
+> \u2728 **New file**
+
+${lintSection}`;
+    if (hasLintErrors(diagnostics)) return {
+      afterAsl,
+      filename,
+      header: `${newHeader}${LINT_ERROR_DIAGRAM_NOTE}
+
+`,
+      mermaidCode: "",
+      mermaidLabel: "\u{1F4CA} Diagram",
+      mermaidOpenByDefault: false
+    };
     const { code } = generateMermaid({
       aslDefinition: afterAsl,
       ...options
@@ -68728,16 +69666,24 @@ function buildAslFileSection(change, options = {}) {
     return {
       afterAsl,
       filename,
-      header: `### \`${filename}\`
-
-> \u2728 **New file**
-
-`,
+      header: newHeader,
       mermaidCode: code,
       mermaidLabel: "\u{1F4CA} Diagram",
       mermaidOpenByDefault: false
     };
   }
+  if (hasLintErrors(diagnostics)) return {
+    afterAsl,
+    filename,
+    header: `### \`${filename}\`
+
+${lintSection}${LINT_ERROR_DIAGRAM_NOTE}
+
+`,
+    mermaidCode: "",
+    mermaidLabel: "\u{1F4CA} Diagram (changes highlighted)",
+    mermaidOpenByDefault: true
+  };
   const diff = generateMermaidDiff({
     after: afterAsl,
     before: beforeAsl,
@@ -68759,13 +69705,14 @@ function buildAslFileSection(change, options = {}) {
 |---|---|
 ${rows.join("\n")}
 
-`,
+${lintSection}`,
     mermaidCode: diff.code,
     mermaidLabel: "\u{1F4CA} Diagram (changes highlighted)",
     mermaidOpenByDefault: true
   };
 }
 function renderAslFileSection(section, options = { includeDiagram: true }) {
+  if (section.mermaidCode === "") return section.header;
   if (!options.includeDiagram) return `${section.header}${options.omissionNote ?? "> \u{1F4CE} Diagram omitted \u2014 the diagram was too large to inline"}
 `;
   const openAttribute = section.mermaidOpenByDefault ? " open" : "";
