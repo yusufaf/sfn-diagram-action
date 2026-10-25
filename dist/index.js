@@ -66735,7 +66735,8 @@ function parseAsl(params) {
   });
   return {
     edges: assignEdgeIds({ edges }),
-    nodes: nodes5
+    nodes: nodes5,
+    startId: resolver.resolve("", definition.StartAt)
   };
 }
 function hasNestedStates(state2) {
@@ -67452,6 +67453,7 @@ function resolveViewerTheme(params) {
 var MERMAID_LABEL_ENTITIES = {
   "#": "#35;",
   '"': "#quot;",
+  ":": "#58;",
   ";": "#59;",
   "<": "#60;",
   ">": "#62;",
@@ -67633,7 +67635,7 @@ var MermaidRenderer = class {
   * a literal `-->` inside a label, so no separate arrow rule is needed.
   */
   escapeLabel(label) {
-    return label.replace(/[#";<>{}`]/g, (character) => MERMAID_LABEL_ENTITIES[character]).replace(/\n/g, " ");
+    return label.replace(/[#":;<>{}`]/g, (character) => MERMAID_LABEL_ENTITIES[character]).replace(/\n/g, " ");
   }
   /**
   * Build the lines of one scope: its `[*]` entry, state label lines, nested
@@ -67709,10 +67711,13 @@ var MermaidRenderer = class {
   /**
   * Find the start state from the ASL definition's StartAt or, without one, the
   * first top-level state nothing else transitions to.
+  *
+  * StartAt is resolved to a node id the way the parser resolved it, because the id
+  * can differ from the name (a sanitized character, or a discriminator).
   */
   findStartState(params) {
     const { asl, root: root5 } = params;
-    if (asl?.StartAt) return asl.StartAt;
+    if (asl?.StartAt) return buildIdResolver({ definition: asl }).resolve("", asl.StartAt);
     const targetIds = new Set(root5.transitions.filter((edge) => edge.from !== edge.to).map((edge) => edge.to));
     return root5.memberIds.find((id) => !targetIds.has(id)) ?? root5.memberIds[0];
   }
@@ -67753,7 +67758,7 @@ function buildDiagramGraph(params) {
     edges: parsed.edges,
     mode: options.catchHandling,
     nodes: parsed.nodes,
-    startStateId: definition.StartAt
+    startStateId: parsed.startId
   });
   return {
     edges,
@@ -69313,7 +69318,8 @@ async function run() {
   const overlayCandidates = [];
   for (const file of aslFiles) {
     const { filename, status } = file;
-    const beforeContent = status === "added" ? null : await getFileAtRef({ octokit, owner, path: filename, ref: baseSha, repo });
+    const basePath = status === "renamed" && file.previous_filename || filename;
+    const beforeContent = status === "added" ? null : await getFileAtRef({ octokit, owner, path: basePath, ref: baseSha, repo });
     const afterContent = status === "removed" ? null : await getFileAtRef({ octokit, owner, path: filename, ref: headSha, repo });
     const beforeAsl = beforeContent ? parseAslJson(beforeContent) : null;
     const afterAsl = afterContent ? parseAslJson(afterContent) : null;
