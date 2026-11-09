@@ -66353,6 +66353,11 @@ function computeContainerChangeAnnotations(params) {
   };
 }
 var EXECUTION_COLORS = {
+  aborted: {
+    fill: "#cfd8dc",
+    stroke: "#455a64",
+    strokeWidth: 2
+  },
   caught: {
     fill: "#ffe0b2",
     stroke: "#e65100",
@@ -66385,6 +66390,7 @@ function rollUpExecutionStatuses(params) {
   const rollUps = {};
   for (const containerId of plan.effectiveTargets) {
     const counts = {
+      aborted: 0,
       caught: 0,
       failed: 0,
       notReached: 0,
@@ -66399,9 +66405,9 @@ function rollUpExecutionStatuses(params) {
       counts[statusByNodeId[hiddenId] ?? "notReached"] += 1;
     }
     const own = statusByNodeId[containerId] ?? "notReached";
-    const ownFinished = own === "succeeded" || own === "caught" || own === "failed";
+    const ownFinished = own === "succeeded" || own === "caught" || own === "failed" || own === "aborted";
     const reachedInside = counts.total - counts.notReached;
-    const status = own === "failed" || counts.failed > 0 ? "failed" : own === "running" || !ownFinished && counts.running > 0 ? "running" : own !== "notReached" ? own : reachedInside > 0 ? "succeeded" : "notReached";
+    const status = own === "failed" || counts.failed > 0 ? "failed" : own === "aborted" || counts.aborted > 0 ? "aborted" : own === "running" || !ownFinished && counts.running > 0 ? "running" : own !== "notReached" ? own : reachedInside > 0 ? "succeeded" : "notReached";
     const shown = status === "caught" ? "succeeded" : status;
     const annotation = status === "notReached" ? `0/${counts.total} ran` : reachedInside === 0 ? void 0 : `${counts[shown]}/${counts.total} ${shown}`;
     rollUps[containerId] = {
@@ -66419,8 +66425,6 @@ var DEFAULT_DIAGRAM_OPTIONS = {
   layout: "TB",
   rankSeparation: 50,
   nodeSeparation: 50,
-  width: void 0,
-  height: void 0,
   nodeWidth: 120,
   nodeHeight: 60,
   padding: 20,
@@ -66438,7 +66442,6 @@ var DEFAULT_DIAGRAM_OPTIONS = {
   iconResolver: void 0,
   iconSize: 24,
   showIcons: false,
-  pngQuality: 90,
   backgroundColor: "transparent",
   nodeOverrides: void 0,
   edgeOverrides: void 0,
@@ -67018,11 +67021,13 @@ function extractEdgesFromState(params) {
     edges.push(io.edgeDirection === "in" ? {
       from: satelliteId,
       label: io.label,
-      to: stateId
+      to: stateId,
+      type: "normal"
     } : {
       from: stateId,
       label: io.label,
-      to: satelliteId
+      to: satelliteId,
+      type: "normal"
     });
   }
   switch (state2.Type) {
@@ -67638,6 +67643,7 @@ var DIFF_CLASS_NAMES = {
   removed: "diffRemoved"
 };
 var EXECUTION_CLASS_DEFS = {
+  aborted: "classDef execAborted fill:#cfd8dc,stroke:#455a64,stroke-width:2px",
   caught: "classDef execCaught fill:#ffe0b2,stroke:#e65100,stroke-width:2px",
   failed: "classDef execFailed fill:#ffcdd2,stroke:#c62828,stroke-width:3px",
   notReached: "classDef execNotReached fill:#f5f5f5,stroke:#bdbdbd,stroke-width:1px",
@@ -67645,6 +67651,7 @@ var EXECUTION_CLASS_DEFS = {
   succeeded: "classDef execSucceeded fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px"
 };
 var EXECUTION_CLASS_NAMES = {
+  aborted: "execAborted",
   caught: "execCaught",
   failed: "execFailed",
   notReached: "execNotReached",
@@ -67868,32 +67875,6 @@ var MermaidRenderer = class {
     return root5.memberIds.find((id) => !targetIds.has(id)) ?? root5.memberIds[0];
   }
 };
-var REDACTED = "[redacted]";
-function resolve$1(answer, value) {
-  if (answer === void 0) return value === void 0 ? {
-    kept: true,
-    value
-  } : {
-    kept: false,
-    value: REDACTED
-  };
-  return {
-    kept: answer === value,
-    value: answer
-  };
-}
-function redactPayloadText(params) {
-  const { field, redact, stateId, text } = params;
-  if (!redact) return text;
-  const { kept, value } = resolve$1(redact({
-    kind: "payload",
-    path: `${stateId ?? "execution"}.${field}`,
-    stateId,
-    value: text
-  }), text);
-  if (kept) return text;
-  return typeof value === "string" ? value : REDACTED;
-}
 function buildDiagramGraph(params) {
   const { definition, options } = params;
   const parsed = parseAsl({
@@ -68168,639 +68149,6 @@ function generateMermaidDiff(params) {
     }
   };
 }
-var TAKEN_EDGE_STYLE = {
-  stroke: "#2e7d32",
-  strokeWidth: 3
-};
-var UNTAKEN_EDGE_STYLE = { strokeOpacity: 0.2 };
-var TASK_FAILURE_DETAILS = /* @__PURE__ */ new Map([
-  ["ActivityFailed", "activityFailedEventDetails"],
-  ["ActivityScheduleFailed", "activityScheduleFailedEventDetails"],
-  ["ActivityTimedOut", "activityTimedOutEventDetails"],
-  ["EvaluationFailed", "evaluationFailedEventDetails"],
-  ["LambdaFunctionFailed", "lambdaFunctionFailedEventDetails"],
-  ["LambdaFunctionScheduleFailed", "lambdaFunctionScheduleFailedEventDetails"],
-  ["LambdaFunctionStartFailed", "lambdaFunctionStartFailedEventDetails"],
-  ["LambdaFunctionTimedOut", "lambdaFunctionTimedOutEventDetails"],
-  ["TaskFailed", "taskFailedEventDetails"],
-  ["TaskStartFailed", "taskStartFailedEventDetails"],
-  ["TaskSubmitFailed", "taskSubmitFailedEventDetails"],
-  ["TaskTimedOut", "taskTimedOutEventDetails"]
-]);
-var FAILURE_DETAILS_KEYS = [
-  ...TASK_FAILURE_DETAILS.values(),
-  "executionAbortedEventDetails",
-  "executionFailedEventDetails",
-  "executionTimedOutEventDetails",
-  "mapRunFailedEventDetails"
-];
-var CONTAINER_FAILURE_EVENT_TYPES = /* @__PURE__ */ new Map([
-  ["MapRunFailed", {
-    enteredType: "MapStateEntered",
-    terminal: false
-  }],
-  ["MapStateFailed", {
-    enteredType: "MapStateEntered",
-    terminal: true
-  }],
-  ["ParallelStateFailed", {
-    enteredType: "ParallelStateEntered",
-    terminal: true
-  }]
-]);
-var CONTAINER_START_EVENT_TYPES = /* @__PURE__ */ new Map([
-  ["MapRunStarted", "MapStateEntered"],
-  ["MapStateStarted", "MapStateEntered"],
-  ["ParallelStateStarted", "ParallelStateEntered"]
-]);
-var ATTEMPT_START_EVENT_TYPES = /* @__PURE__ */ new Set([
-  "ActivityScheduled",
-  "ActivityStarted",
-  "LambdaFunctionScheduled",
-  "LambdaFunctionStarted",
-  "TaskScheduled",
-  "TaskStarted",
-  "TaskSubmitted"
-]);
-var SUCCESS_EVENT_TYPES = /* @__PURE__ */ new Set([
-  "ActivitySucceeded",
-  "LambdaFunctionSucceeded",
-  "TaskSucceeded"
-]);
-var EDGE_WALK_BOUNDARY_TYPES = /* @__PURE__ */ new Set([
-  "ExecutionStarted",
-  "MapIterationStarted",
-  "MapStateStarted",
-  "ParallelStateStarted"
-]);
-function toMillis(timestamp) {
-  if (timestamp instanceof Date) return timestamp.getTime();
-  if (typeof timestamp === "number") return timestamp;
-  if (typeof timestamp === "string") {
-    const parsed = Date.parse(timestamp);
-    return Number.isNaN(parsed) ? void 0 : parsed;
-  }
-}
-function normalizeEvents(input) {
-  const value = typeof input === "string" ? JSON.parse(stripBom(input)) : input;
-  return [...Array.isArray(value) ? value : value?.events ?? []].sort((a5, b5) => (a5.id ?? 0) - (b5.id ?? 0));
-}
-function enteredName(event) {
-  return event.stateEnteredEventDetails?.name;
-}
-function exitedName(event) {
-  return event.stateExitedEventDetails?.name;
-}
-function failureDetails(event) {
-  for (const key of FAILURE_DETAILS_KEYS) {
-    const details = event[key];
-    if (details?.error !== void 0 || details?.cause !== void 0) return details;
-  }
-}
-function extractError(event) {
-  return failureDetails(event)?.error;
-}
-function extractCause(event) {
-  return failureDetails(event)?.cause;
-}
-var EXECUTION_PAYLOAD_CAP = 4096;
-function createPayloadCapture(params) {
-  const { redact } = params;
-  let spent = 0;
-  return ({ field, raw, stateId }) => {
-    if (raw === void 0 || spent >= 262144) return void 0;
-    const redacted = redactPayloadText({
-      field,
-      redact,
-      stateId,
-      text: raw
-    });
-    const text = redacted.length <= 4096 ? redacted : redacted.slice(0, EXECUTION_PAYLOAD_CAP);
-    spent += text.length;
-    return text.length === redacted.length ? { text } : {
-      text,
-      truncatedFrom: redacted.length
-    };
-  };
-}
-var CONTAINER_ENTERED_TYPES = /* @__PURE__ */ new Set(["MapStateEntered", "ParallelStateEntered"]);
-function buildChildScopes(params) {
-  const { definition, resolver } = params;
-  const childScopes = /* @__PURE__ */ new Map();
-  const visit = (current, scope) => {
-    for (const [stateName, state2] of Object.entries(current.States)) {
-      const containerId = resolver.resolve(scope, stateName);
-      const record = (child, childScope) => {
-        const scopesByName = childScopes.get(containerId) ?? /* @__PURE__ */ new Map();
-        for (const childName of Object.keys(child.States)) if (!scopesByName.has(childName)) scopesByName.set(childName, childScope);
-        childScopes.set(containerId, scopesByName);
-        visit(child, childScope);
-      };
-      if (state2.Type === "Parallel" && Array.isArray(state2.Branches)) state2.Branches.forEach((branch, index) => record(branch, resolver.branchScope(scope, stateName, index)));
-      if (state2.Type === "Map") {
-        const processor = getMapProcessor(state2);
-        if (processor) record(processor, resolver.processorScope(scope, stateName));
-      }
-    }
-  };
-  visit(definition, "");
-  return childScopes;
-}
-function mergeStatus(current, incoming) {
-  const rank = {
-    failed: 4,
-    caught: 3,
-    running: 2,
-    succeeded: 1,
-    notReached: 0
-  };
-  if (!current) return incoming;
-  return rank[incoming] > rank[current] ? incoming : current;
-}
-function walkExecutionHistory(params) {
-  const { definition, events, includePayloads = false, redact } = params;
-  const eventById = /* @__PURE__ */ new Map();
-  for (const event of events) if (event.id !== void 0) eventById.set(event.id, event);
-  const results = {};
-  const openStack = [];
-  const takenSet = /* @__PURE__ */ new Set();
-  const takenEdges = [];
-  const entries = [];
-  let executionStatus = "running";
-  let startState;
-  const capturePayload = createPayloadCapture({ redact });
-  const resolver = definition ? buildIdResolver({ definition }) : void 0;
-  const nodeIdFor = (scope, name) => resolver ? resolver.resolve(scope, name) : replaceXmlForbiddenChars(name);
-  const childScopes = definition && resolver ? buildChildScopes({
-    definition,
-    resolver
-  }) : void 0;
-  let lastKnownMs = 0;
-  let startMs;
-  const eventMs = (event) => {
-    const millis = toMillis(event.timestamp);
-    if (millis !== void 0) {
-      lastKnownMs = millis;
-      if (startMs === void 0) startMs = millis;
-    }
-    return lastKnownMs;
-  };
-  const findFromState = (event) => {
-    let cursorId = event.previousEventId;
-    const seen = /* @__PURE__ */ new Set();
-    while (cursorId !== void 0 && !seen.has(cursorId)) {
-      seen.add(cursorId);
-      const prev = eventById.get(cursorId);
-      if (!prev || !prev.type) return void 0;
-      if (prev.type.endsWith("StateExited")) return exitedName(prev);
-      if (prev.type.endsWith("StateEntered")) return void 0;
-      if (EDGE_WALK_BOUNDARY_TYPES.has(prev.type)) return void 0;
-      cursorId = prev.previousEventId;
-    }
-  };
-  const ensure2 = (name) => {
-    if (!results[name]) results[name] = {
-      attempts: 0,
-      status: "succeeded"
-    };
-    return results[name];
-  };
-  const statusTally = /* @__PURE__ */ new Map();
-  const contribute = (name, status) => {
-    const tally = statusTally.get(name) ?? /* @__PURE__ */ new Map();
-    tally.set(status, (tally.get(status) ?? 0) + 1);
-    statusTally.set(name, tally);
-    const result = ensure2(name);
-    result.status = mergeStatus(result.status, status);
-  };
-  const withdrawFailure = (name) => {
-    const tally = statusTally.get(name);
-    if (!tally) return;
-    tally.set("failed", Math.max((tally.get("failed") ?? 0) - 1, 0));
-    ensure2(name).status = [...tally].filter(([, count]) => count > 0).reduce((status, [incoming]) => mergeStatus(status, incoming), "succeeded");
-  };
-  const retired = /* @__PURE__ */ new Set();
-  let resumable = /* @__PURE__ */ new Map();
-  const resumeFrame = (frame, ms) => {
-    resumable.delete(frame.enteredEventId);
-    const result = ensure2(frame.name);
-    result.attempts -= frame.retiredAttempts ?? 0;
-    withdrawFailure(frame.name);
-    frame.failures = Math.max(frame.failures, 1);
-    frame.lastOutcome = void 0;
-    frame.failureClosed = false;
-    frame.failureCounted = false;
-    if (frame.enteredMs !== void 0 && frame.retiredMs !== void 0) frame.enteredMs += ms - frame.retiredMs;
-    openStack.push(frame);
-    openEntry(frame, ms, frame.failures + 1);
-    if (frame.parent) frame.parent.childStarts += 1;
-  };
-  const findFrameIndex = (predicate) => {
-    for (let i5 = openStack.length - 1; i5 >= 0; i5--) if (predicate(openStack[i5])) return i5;
-    return -1;
-  };
-  const frameForEvent = (event) => {
-    let cursorId = event.previousEventId;
-    const seen = /* @__PURE__ */ new Set();
-    while (cursorId !== void 0 && !seen.has(cursorId)) {
-      seen.add(cursorId);
-      const owner = openStack.find((frame) => frame.enteredEventId === cursorId);
-      if (owner) return owner;
-      const paused = resumable.get(cursorId);
-      if (paused) {
-        resumeFrame(paused, lastKnownMs);
-        return paused;
-      }
-      const prev = eventById.get(cursorId);
-      if (!prev?.type) return void 0;
-      if (prev.type.endsWith("StateEntered") || prev.type.endsWith("StateExited")) return;
-      if (EDGE_WALK_BOUNDARY_TYPES.has(prev.type)) return void 0;
-      cursorId = prev.previousEventId;
-    }
-  };
-  const openContainer = () => {
-    const index = findFrameIndex((frame) => CONTAINER_ENTERED_TYPES.has(frame.enteredType));
-    return index >= 0 ? openStack[index] : void 0;
-  };
-  const stampChildCount = (frame, entry) => {
-    if (frame.enteredType === "ParallelStateEntered") entry.branchCount = frame.childStarts;
-    if (frame.enteredType === "MapStateEntered") entry.iterationCount = frame.childStarts;
-  };
-  const openEntry = (frame, ms, attempt, fromNodeId) => {
-    frame.childStarts = 0;
-    frame.lastEntryIndex = entries.length;
-    frame.openEntryIndex = entries.length;
-    entries.push({
-      attempt,
-      enteredMs: ms,
-      ...fromNodeId !== void 0 ? { fromNodeId } : {},
-      ...frame.payloadInput !== void 0 ? { input: frame.payloadInput } : {},
-      nodeId: frame.nodeId,
-      stateName: frame.name,
-      status: "running"
-    });
-  };
-  const closeEntry = (frame, ms, status, error3, payloads) => {
-    if (frame.openEntryIndex === void 0) return;
-    const entry = entries[frame.openEntryIndex];
-    entry.exitedMs = ms;
-    entry.status = status;
-    if (error3 !== void 0 && entry.error === void 0) entry.error = redactPayloadText({
-      field: "error",
-      redact,
-      stateId: frame.nodeId,
-      text: error3
-    });
-    if (payloads?.cause !== void 0) entry.cause = payloads.cause;
-    if (payloads?.output !== void 0) entry.output = payloads.output;
-    stampChildCount(frame, entry);
-    frame.openEntryIndex = void 0;
-  };
-  const closeAsFailed = (frame, ms, fallbackError, cause) => {
-    const result = ensure2(frame.name);
-    contribute(frame.name, "failed");
-    result.attempts += Math.max(frame.failures, 1);
-    frame.retiredAttempts = Math.max(frame.failures, 1);
-    frame.retiredMs = ms;
-    if (frame.enteredEventId !== void 0) retired.add(frame);
-    const error3 = frame.error ?? fallbackError;
-    if (error3 && !result.error) result.error = error3;
-    closeEntry(frame, ms, "failed", error3, { cause: frame.payloadCause ?? cause });
-  };
-  for (const event of events) {
-    const type = event.type ?? "";
-    const nowMs = eventMs(event);
-    if (type.endsWith("StateEntered")) {
-      const name = enteredName(event);
-      if (!name) continue;
-      if (!startState) startState = name;
-      ensure2(name);
-      const parent = openContainer();
-      const scope = parent ? childScopes?.get(parent.nodeId)?.get(name) ?? "" : "";
-      const nodeId = nodeIdFor(scope, name);
-      const frame = {
-        childStarts: 0,
-        enteredEventId: event.id,
-        enteredMs: toMillis(event.timestamp),
-        enteredType: type,
-        failures: 0,
-        lastEntryIndex: -1,
-        name,
-        nodeId,
-        parent,
-        ...includePayloads ? { payloadInput: capturePayload({
-          field: "input",
-          raw: event.stateEnteredEventDetails?.input,
-          stateId: nodeId
-        }) } : {}
-      };
-      openStack.push(frame);
-      const from = findFromState(event);
-      if (from) {
-        const key = `${from}->${name}`;
-        if (!takenSet.has(key)) {
-          takenSet.add(key);
-          takenEdges.push({
-            from,
-            to: name
-          });
-        }
-      }
-      openEntry(frame, nowMs, 1, from === void 0 ? void 0 : nodeIdFor(scope, from));
-      if (parent && from === void 0) parent.childStarts += 1;
-      if (type === "FailStateEntered") {
-        const result = ensure2(name);
-        contribute(name, "failed");
-        result.attempts = Math.max(result.attempts, 1);
-        closeEntry(frame, nowMs, "failed");
-      }
-      continue;
-    }
-    if (type.endsWith("StateExited")) {
-      const name = exitedName(event);
-      if (!name) continue;
-      const owner = frameForEvent(event);
-      const frameIndex = owner?.name === name ? openStack.indexOf(owner) : findFrameIndex((candidate) => candidate.name === name);
-      const frame = frameIndex >= 0 ? openStack.splice(frameIndex, 1)[0] : void 0;
-      const result = ensure2(name);
-      const exitMs = toMillis(event.timestamp);
-      if (frame?.enteredMs !== void 0 && exitMs !== void 0) result.durationMs = (result.durationMs ?? 0) + (exitMs - frame.enteredMs);
-      const wasCaught = frame?.lastOutcome === "failure";
-      const failures = frame?.failures ?? 0;
-      result.attempts += Math.max(failures + (wasCaught ? 0 : 1), 1);
-      contribute(name, wasCaught ? "caught" : "succeeded");
-      if (frame?.error && !result.error) result.error = frame.error;
-      if (frame) {
-        if (frame.openEntryIndex !== void 0) closeEntry(frame, exitMs ?? nowMs, "succeeded", void 0, { output: includePayloads ? capturePayload({
-          field: "output",
-          raw: event.stateExitedEventDetails?.output,
-          stateId: frame.nodeId
-        }) : void 0 });
-        else if (frame.lastEntryIndex >= 0 && wasCaught) entries[frame.lastEntryIndex].status = "caught";
-      }
-      continue;
-    }
-    const containerFailure = CONTAINER_FAILURE_EVENT_TYPES.get(type);
-    if (containerFailure) {
-      const containerIndex = findFrameIndex((frame) => frame.enteredType === containerFailure.enteredType && !frame.failureClosed);
-      if (containerIndex >= 0) {
-        const eventError = extractError(event);
-        const rawCause = extractCause(event);
-        const causeFor = (frame) => includePayloads ? capturePayload({
-          field: "cause",
-          raw: rawCause,
-          stateId: frame.nodeId
-        }) : void 0;
-        const leaves = openStack.splice(containerIndex + 1);
-        for (const leaf of leaves) closeAsFailed(leaf, nowMs, eventError, leaf.payloadCause ? void 0 : causeFor(leaf));
-        const failingLeaf = leaves.find((leaf) => leaf.lastOutcome === "failure");
-        const leafError = failingLeaf?.error;
-        const container = openStack[containerIndex];
-        if (!container.failureCounted) {
-          container.failures += 1;
-          container.failureCounted = true;
-        }
-        container.lastOutcome = "failure";
-        container.error = container.error ?? eventError ?? leafError;
-        if (containerFailure.terminal) container.failureClosed = true;
-        closeEntry(container, nowMs, "failed", eventError ?? leafError, { cause: causeFor(container) ?? failingLeaf?.payloadCause });
-      }
-      continue;
-    }
-    const startedEnteredType = CONTAINER_START_EVENT_TYPES.get(type);
-    if (startedEnteredType) {
-      const containerIndex = findFrameIndex((frame) => frame.enteredType === startedEnteredType);
-      if (containerIndex >= 0) {
-        const container = openStack[containerIndex];
-        container.failureClosed = false;
-        container.failureCounted = false;
-        if (container.openEntryIndex === void 0) openEntry(container, nowMs, container.failures + 1);
-      }
-      continue;
-    }
-    if (type === "ExecutionRedriven") {
-      executionStatus = "running";
-      const allAncestorsRetired = (frame) => {
-        for (let ancestor = frame.parent; ancestor; ancestor = ancestor.parent) if (!retired.has(ancestor)) return false;
-        return true;
-      };
-      resumable = new Map([...retired].filter(allAncestorsRetired).map((frame) => [frame.enteredEventId, frame]));
-      retired.clear();
-      const containers = [...resumable.values()].filter((frame) => CONTAINER_ENTERED_TYPES.has(frame.enteredType)).sort((left, right) => left.enteredEventId - right.enteredEventId);
-      for (const container of containers) resumeFrame(container, nowMs);
-      continue;
-    }
-    const activeFrame = frameForEvent(event) ?? openStack[openStack.length - 1];
-    if (activeFrame !== void 0 && activeFrame.openEntryIndex === void 0 && ATTEMPT_START_EVENT_TYPES.has(type)) openEntry(activeFrame, nowMs, activeFrame.failures + 1);
-    if (TASK_FAILURE_DETAILS.has(type)) {
-      if (activeFrame) {
-        if (activeFrame.openEntryIndex === void 0) openEntry(activeFrame, nowMs, activeFrame.failures + 1);
-        activeFrame.failures += 1;
-        activeFrame.lastOutcome = "failure";
-        activeFrame.error = extractError(event) ?? activeFrame.error;
-        const cause = includePayloads ? capturePayload({
-          field: "cause",
-          raw: extractCause(event),
-          stateId: activeFrame.nodeId
-        }) : void 0;
-        activeFrame.payloadCause = cause ?? activeFrame.payloadCause;
-        closeEntry(activeFrame, nowMs, "failed", extractError(event), { cause });
-      }
-      continue;
-    }
-    if (SUCCESS_EVENT_TYPES.has(type)) {
-      if (activeFrame) {
-        activeFrame.lastOutcome = "success";
-        if (activeFrame.openEntryIndex === void 0) openEntry(activeFrame, nowMs, activeFrame.failures + 1);
-      }
-      continue;
-    }
-    if (type === "ExecutionSucceeded") executionStatus = "succeeded";
-    else if (type === "ExecutionFailed" || type === "ExecutionAborted" || type === "ExecutionTimedOut") {
-      executionStatus = type === "ExecutionFailed" ? "failed" : type === "ExecutionAborted" ? "aborted" : "timedOut";
-      const execError = extractError(event);
-      const rawExecCause = extractCause(event);
-      for (const frame of openStack) closeAsFailed(frame, nowMs, execError, frame.payloadCause || !includePayloads ? void 0 : capturePayload({
-        field: "cause",
-        raw: rawExecCause,
-        stateId: frame.nodeId
-      }));
-      openStack.length = 0;
-    }
-  }
-  for (const frame of openStack) {
-    const result = ensure2(frame.name);
-    contribute(frame.name, "running");
-    result.attempts += Math.max(frame.failures, 1);
-    if (frame.openEntryIndex !== void 0) stampChildCount(frame, entries[frame.openEntryIndex]);
-  }
-  return {
-    overlay: {
-      executionStatus,
-      startState,
-      states: results,
-      takenEdges
-    },
-    resolver,
-    timeline: {
-      endMs: lastKnownMs,
-      entries,
-      startMs: startMs ?? 0,
-      status: executionStatus
-    }
-  };
-}
-function formatDuration(durationMs) {
-  if (durationMs < 1e3) return `${Math.round(durationMs)}ms`;
-  return `${(durationMs / 1e3).toFixed(durationMs < 1e4 ? 1 : 0)}s`;
-}
-function buildAnnotation(result) {
-  const parts = [];
-  if (result.durationMs !== void 0) parts.push(formatDuration(result.durationMs));
-  if (result.attempts > 1) parts.push(`\xD7${result.attempts}`);
-  return parts.length > 0 ? parts.join(" ") : void 0;
-}
-function summarize(overlay, allStateNames) {
-  const summary2 = {
-    caught: [],
-    failed: [],
-    notReached: [],
-    running: [],
-    succeeded: [],
-    takenEdgeCount: overlay.takenEdges.length
-  };
-  for (const [name, result] of Object.entries(overlay.states)) summary2[result.status].push(name);
-  for (const name of allStateNames) if (!overlay.states[name]) summary2.notReached.push(name);
-  return summary2;
-}
-function computeExecutionWalk(definition, history, includePayloads, redact) {
-  return walkExecutionHistory({
-    definition,
-    events: normalizeEvents(history),
-    includePayloads,
-    redact
-  });
-}
-function byNodeId(byStateName, idsForName) {
-  const result = {};
-  for (const [name, value] of Object.entries(byStateName)) for (const id of idsForName(name)) result[id] = value;
-  return result;
-}
-function computeExecutionStyling(params) {
-  const { callerEdgeOverrides, definition, edges, history, includeExecutionPayloads, nodes: nodes5, redact, summaryStateNames = Object.keys(definition.States) } = params;
-  const walk = computeExecutionWalk(definition, history, includeExecutionPayloads, redact);
-  const { overlay, timeline } = walk;
-  const resolver = walk.resolver ?? buildIdResolver({ definition });
-  const statesByNodeId = byNodeId(overlay.states, resolver.idsForName);
-  const nodeOverrides = {};
-  const nodeAnnotations = {};
-  const statusByNodeId = {};
-  for (const node of nodes5) {
-    const result = statesByNodeId[node.id];
-    const status = result?.status ?? "notReached";
-    nodeOverrides[node.id] = EXECUTION_COLORS[status];
-    statusByNodeId[node.id] = status;
-    if (result) {
-      const annotation = buildAnnotation(result);
-      if (annotation) nodeAnnotations[node.id] = annotation;
-    }
-  }
-  const pairKeys = new Set(edges.map((edge) => `${edge.from}->${edge.to}`));
-  const callerBarePairs = new Set(Object.keys(callerEdgeOverrides ?? {}).filter((key) => pairKeys.has(key)));
-  const takenKeys = new Set(overlay.takenEdges.flatMap((edge) => resolver.idsForName(edge.from).flatMap((from) => resolver.idsForName(edge.to).map((to) => `${from}->${to}`))).filter((key) => pairKeys.has(key)));
-  const edgeOverrides = {};
-  for (const edge of edges) {
-    const pairKey = `${edge.from}->${edge.to}`;
-    if (callerBarePairs.has(pairKey)) continue;
-    const isTaken = edge.type !== "retry" && takenKeys.has(pairKey);
-    edgeOverrides[edge.id] = isTaken ? TAKEN_EDGE_STYLE : UNTAKEN_EDGE_STYLE;
-  }
-  return {
-    edgeOverrides,
-    nodeAnnotations,
-    nodeOverrides,
-    statusByNodeId,
-    summary: {
-      ...summarize(overlay, summaryStateNames),
-      executionStatus: overlay.executionStatus,
-      timeline
-    }
-  };
-}
-function collapsedExecutionClasses(params) {
-  const { nodes: nodes5, plan, styling } = params;
-  const executionClasses = { ...styling.statusByNodeId };
-  const rollUps = rollUpExecutionStatuses({
-    nodes: nodes5,
-    plan,
-    statusByNodeId: styling.statusByNodeId
-  });
-  for (const [id, rollUp] of Object.entries(rollUps)) executionClasses[id] = rollUp.status;
-  const { nodeAnnotations } = styleCollapsedView({
-    executionStatusByNodeId: styling.statusByNodeId,
-    expanded: { nodeAnnotations: styling.nodeAnnotations },
-    nodes: nodes5,
-    plan
-  });
-  return {
-    executionClasses,
-    nodeAnnotations
-  };
-}
-function generateMermaidExecution(params) {
-  const { aslDefinition, history, ...options } = params;
-  const aslObj = parseAslSource({ source: aslDefinition });
-  const mergedOptions = mergeOptions(options);
-  const { edges, nodes: nodes5 } = buildDiagramGraph({
-    definition: aslObj,
-    options: mergedOptions
-  });
-  const styling = computeExecutionStyling({
-    definition: aslObj,
-    edges,
-    history,
-    nodes: nodes5
-  });
-  const { executionClasses, nodeAnnotations } = mergedOptions.collapse ? collapsedExecutionClasses({
-    nodes: nodes5,
-    plan: computeCollapsePlan({
-      collapse: mergedOptions.collapse,
-      edges,
-      nodes: nodes5
-    }),
-    styling
-  }) : {
-    executionClasses: styling.statusByNodeId,
-    nodeAnnotations: styling.nodeAnnotations
-  };
-  const collapsedGraph = applyCollapse({
-    collapse: mergedOptions.collapse,
-    edges,
-    nodes: nodes5
-  });
-  const { code, metadata } = new MermaidRenderer().render({
-    asl: aslObj,
-    customColors: mergedOptions.customColors,
-    edges: collapsedGraph.edges,
-    executionClasses,
-    layout: mergedOptions.layout,
-    nodeAnnotations,
-    nodes: collapsedGraph.nodes,
-    showVariables: mergedOptions.showVariables,
-    theme: mergedOptions.theme
-  });
-  const { executionStatus, timeline, ...statusCounts } = styling.summary;
-  return {
-    code,
-    metadata: {
-      ...statusCounts,
-      edgeCount: metadata.edgeCount,
-      executionStatus,
-      stateCount: metadata.stateCount,
-      timeline
-    }
-  };
-}
 var RETRY_CATCH_TYPES = /* @__PURE__ */ new Set([
   "Map",
   "Parallel",
@@ -69052,6 +68400,705 @@ function lintAsl(params) {
   });
   return diagnostics;
 }
+var REDACTED = "[redacted]";
+function resolve$1(answer, value) {
+  if (answer === void 0) return value === void 0 ? {
+    kept: true,
+    value
+  } : {
+    kept: false,
+    value: REDACTED
+  };
+  return {
+    kept: answer === value,
+    value: answer
+  };
+}
+function redactPayloadText(params) {
+  const { field, redact, stateId, text } = params;
+  if (!redact) return text;
+  const { kept, value } = resolve$1(redact({
+    kind: "payload",
+    path: `${stateId ?? "execution"}.${field}`,
+    stateId,
+    value: text
+  }), text);
+  if (kept) return text;
+  return typeof value === "string" ? value : REDACTED;
+}
+var TAKEN_EDGE_STYLE = {
+  stroke: "#2e7d32",
+  strokeWidth: 3
+};
+var UNTAKEN_EDGE_STYLE = { strokeOpacity: 0.2 };
+var TASK_FAILURE_DETAILS = /* @__PURE__ */ new Map([
+  ["ActivityFailed", "activityFailedEventDetails"],
+  ["ActivityScheduleFailed", "activityScheduleFailedEventDetails"],
+  ["ActivityTimedOut", "activityTimedOutEventDetails"],
+  ["EvaluationFailed", "evaluationFailedEventDetails"],
+  ["LambdaFunctionFailed", "lambdaFunctionFailedEventDetails"],
+  ["LambdaFunctionScheduleFailed", "lambdaFunctionScheduleFailedEventDetails"],
+  ["LambdaFunctionStartFailed", "lambdaFunctionStartFailedEventDetails"],
+  ["LambdaFunctionTimedOut", "lambdaFunctionTimedOutEventDetails"],
+  ["TaskFailed", "taskFailedEventDetails"],
+  ["TaskStartFailed", "taskStartFailedEventDetails"],
+  ["TaskSubmitFailed", "taskSubmitFailedEventDetails"],
+  ["TaskTimedOut", "taskTimedOutEventDetails"]
+]);
+var FAILURE_DETAILS_KEYS = [
+  ...TASK_FAILURE_DETAILS.values(),
+  "executionAbortedEventDetails",
+  "executionFailedEventDetails",
+  "executionTimedOutEventDetails",
+  "mapRunFailedEventDetails"
+];
+var CONTAINER_FAILURE_EVENT_TYPES = /* @__PURE__ */ new Map([
+  ["MapRunFailed", {
+    enteredType: "MapStateEntered",
+    terminal: false
+  }],
+  ["MapStateFailed", {
+    enteredType: "MapStateEntered",
+    terminal: true
+  }],
+  ["ParallelStateFailed", {
+    enteredType: "ParallelStateEntered",
+    terminal: true
+  }]
+]);
+var CONTAINER_ABORT_EVENT_TYPES = /* @__PURE__ */ new Map([
+  ["MapRunAborted", {
+    enteredType: "MapStateEntered",
+    terminal: false
+  }],
+  ["MapStateAborted", {
+    enteredType: "MapStateEntered",
+    terminal: true
+  }],
+  ["ParallelStateAborted", {
+    enteredType: "ParallelStateEntered",
+    terminal: true
+  }]
+]);
+var CONTAINER_START_EVENT_TYPES = /* @__PURE__ */ new Map([
+  ["MapRunStarted", "MapStateEntered"],
+  ["MapStateStarted", "MapStateEntered"],
+  ["ParallelStateStarted", "ParallelStateEntered"]
+]);
+var ATTEMPT_START_EVENT_TYPES = /* @__PURE__ */ new Set([
+  "ActivityScheduled",
+  "ActivityStarted",
+  "LambdaFunctionScheduled",
+  "LambdaFunctionStarted",
+  "TaskScheduled",
+  "TaskStarted",
+  "TaskSubmitted"
+]);
+var SUCCESS_EVENT_TYPES = /* @__PURE__ */ new Set([
+  "ActivitySucceeded",
+  "LambdaFunctionSucceeded",
+  "TaskSucceeded"
+]);
+var EDGE_WALK_BOUNDARY_TYPES = /* @__PURE__ */ new Set([
+  "ExecutionStarted",
+  "MapIterationStarted",
+  "MapStateStarted",
+  "ParallelStateStarted"
+]);
+function toMillis(timestamp) {
+  if (timestamp instanceof Date) return timestamp.getTime();
+  if (typeof timestamp === "number") return timestamp;
+  if (typeof timestamp === "string") {
+    const parsed = Date.parse(timestamp);
+    return Number.isNaN(parsed) ? void 0 : parsed;
+  }
+}
+function normalizeEvents(input) {
+  const value = typeof input === "string" ? JSON.parse(stripBom(input)) : input;
+  return [...Array.isArray(value) ? value : value?.events ?? []].sort((a5, b5) => (a5.id ?? 0) - (b5.id ?? 0));
+}
+function enteredName(event) {
+  return event.stateEnteredEventDetails?.name;
+}
+function exitedName(event) {
+  return event.stateExitedEventDetails?.name;
+}
+function failureDetails(event) {
+  for (const key of FAILURE_DETAILS_KEYS) {
+    const details = event[key];
+    if (details?.error !== void 0 || details?.cause !== void 0) return details;
+  }
+}
+function extractError(event) {
+  return failureDetails(event)?.error;
+}
+function extractCause(event) {
+  return failureDetails(event)?.cause;
+}
+var EXECUTION_PAYLOAD_CAP = 4096;
+function createPayloadCapture(params) {
+  const { redact } = params;
+  let spent = 0;
+  return ({ field, raw, stateId }) => {
+    if (raw === void 0 || spent >= 262144) return void 0;
+    const redacted = redactPayloadText({
+      field,
+      redact,
+      stateId,
+      text: raw
+    });
+    const text = redacted.length <= 4096 ? redacted : redacted.slice(0, EXECUTION_PAYLOAD_CAP);
+    spent += text.length;
+    return text.length === redacted.length ? { text } : {
+      text,
+      truncatedFrom: redacted.length
+    };
+  };
+}
+var CONTAINER_ENTERED_TYPES = /* @__PURE__ */ new Set(["MapStateEntered", "ParallelStateEntered"]);
+function buildChildScopes(params) {
+  const { definition, resolver } = params;
+  const childScopes = /* @__PURE__ */ new Map();
+  const visit = (current, scope) => {
+    for (const [stateName, state2] of Object.entries(current.States)) {
+      const containerId = resolver.resolve(scope, stateName);
+      const record = (child, childScope) => {
+        const scopesByName = childScopes.get(containerId) ?? /* @__PURE__ */ new Map();
+        for (const childName of Object.keys(child.States)) if (!scopesByName.has(childName)) scopesByName.set(childName, childScope);
+        childScopes.set(containerId, scopesByName);
+        visit(child, childScope);
+      };
+      if (state2.Type === "Parallel" && Array.isArray(state2.Branches)) state2.Branches.forEach((branch, index) => record(branch, resolver.branchScope(scope, stateName, index)));
+      if (state2.Type === "Map") {
+        const processor = getMapProcessor(state2);
+        if (processor) record(processor, resolver.processorScope(scope, stateName));
+      }
+    }
+  };
+  visit(definition, "");
+  return childScopes;
+}
+function mergeStatus(current, incoming) {
+  const rank = {
+    aborted: 4,
+    caught: 3,
+    failed: 5,
+    notReached: 0,
+    running: 2,
+    succeeded: 1
+  };
+  if (!current) return incoming;
+  return rank[incoming] > rank[current] ? incoming : current;
+}
+function walkExecutionHistory(params) {
+  const { definition, events, includePayloads = false, redact } = params;
+  const eventById = /* @__PURE__ */ new Map();
+  for (const event of events) if (event.id !== void 0) eventById.set(event.id, event);
+  const results = {};
+  const openStack = [];
+  const takenSet = /* @__PURE__ */ new Set();
+  const takenEdges = [];
+  const entries = [];
+  let executionStatus = "running";
+  let startState;
+  const capturePayload = createPayloadCapture({ redact });
+  const resolver = definition ? buildIdResolver({ definition }) : void 0;
+  const nodeIdFor = (scope, name) => resolver ? resolver.resolve(scope, name) : replaceXmlForbiddenChars(name);
+  const childScopes = definition && resolver ? buildChildScopes({
+    definition,
+    resolver
+  }) : void 0;
+  let lastKnownMs = 0;
+  let startMs;
+  const eventMs = (event) => {
+    const millis = toMillis(event.timestamp);
+    if (millis !== void 0) {
+      lastKnownMs = millis;
+      if (startMs === void 0) startMs = millis;
+    }
+    return lastKnownMs;
+  };
+  const findFromState = (event) => {
+    let cursorId = event.previousEventId;
+    const seen = /* @__PURE__ */ new Set();
+    while (cursorId !== void 0 && !seen.has(cursorId)) {
+      seen.add(cursorId);
+      const prev = eventById.get(cursorId);
+      if (!prev || !prev.type) return void 0;
+      if (prev.type.endsWith("StateExited")) return exitedName(prev);
+      if (prev.type.endsWith("StateEntered")) return void 0;
+      if (EDGE_WALK_BOUNDARY_TYPES.has(prev.type)) return void 0;
+      cursorId = prev.previousEventId;
+    }
+  };
+  const ensure2 = (name) => {
+    if (!results[name]) results[name] = {
+      attempts: 0,
+      status: "succeeded"
+    };
+    return results[name];
+  };
+  const statusTally = /* @__PURE__ */ new Map();
+  const contribute = (name, status) => {
+    const tally = statusTally.get(name) ?? /* @__PURE__ */ new Map();
+    tally.set(status, (tally.get(status) ?? 0) + 1);
+    statusTally.set(name, tally);
+    const result = ensure2(name);
+    result.status = mergeStatus(result.status, status);
+  };
+  const withdrawOutcome = (name, status) => {
+    const tally = statusTally.get(name);
+    if (!tally) return;
+    tally.set(status, Math.max((tally.get(status) ?? 0) - 1, 0));
+    ensure2(name).status = [...tally].filter(([, count]) => count > 0).reduce((status2, [incoming]) => mergeStatus(status2, incoming), "succeeded");
+  };
+  const retired = /* @__PURE__ */ new Set();
+  let resumable = /* @__PURE__ */ new Map();
+  const resumeFrame = (frame, ms) => {
+    resumable.delete(frame.enteredEventId);
+    const result = ensure2(frame.name);
+    result.attempts -= frame.retiredAttempts ?? 0;
+    withdrawOutcome(frame.name, frame.retiredStatus ?? "failed");
+    frame.failures = Math.max(frame.failures, 1);
+    frame.lastOutcome = void 0;
+    frame.failureClosed = false;
+    frame.failureCounted = false;
+    if (frame.enteredMs !== void 0 && frame.retiredMs !== void 0) frame.enteredMs += ms - frame.retiredMs;
+    openStack.push(frame);
+    openEntry(frame, ms, frame.failures + 1);
+    if (frame.parent) frame.parent.childStarts += 1;
+  };
+  const findFrameIndex = (predicate) => {
+    for (let i5 = openStack.length - 1; i5 >= 0; i5--) if (predicate(openStack[i5])) return i5;
+    return -1;
+  };
+  const frameForEvent = (event) => {
+    let cursorId = event.previousEventId;
+    const seen = /* @__PURE__ */ new Set();
+    while (cursorId !== void 0 && !seen.has(cursorId)) {
+      seen.add(cursorId);
+      const owner = openStack.find((frame) => frame.enteredEventId === cursorId);
+      if (owner) return owner;
+      const paused = resumable.get(cursorId);
+      if (paused) {
+        resumeFrame(paused, lastKnownMs);
+        return paused;
+      }
+      const prev = eventById.get(cursorId);
+      if (!prev?.type) return void 0;
+      if (prev.type.endsWith("StateEntered") || prev.type.endsWith("StateExited")) return;
+      if (EDGE_WALK_BOUNDARY_TYPES.has(prev.type)) return void 0;
+      cursorId = prev.previousEventId;
+    }
+  };
+  const openContainer = () => {
+    const index = findFrameIndex((frame) => CONTAINER_ENTERED_TYPES.has(frame.enteredType));
+    return index >= 0 ? openStack[index] : void 0;
+  };
+  const stampChildCount = (frame, entry) => {
+    if (frame.enteredType === "ParallelStateEntered") entry.branchCount = frame.childStarts;
+    if (frame.enteredType === "MapStateEntered") entry.iterationCount = frame.childStarts;
+  };
+  const openEntry = (frame, ms, attempt, fromNodeId) => {
+    frame.childStarts = 0;
+    frame.lastEntryIndex = entries.length;
+    frame.openEntryIndex = entries.length;
+    entries.push({
+      attempt,
+      enteredMs: ms,
+      ...fromNodeId !== void 0 ? { fromNodeId } : {},
+      ...frame.payloadInput !== void 0 ? { input: frame.payloadInput } : {},
+      nodeId: frame.nodeId,
+      stateName: frame.name,
+      status: "running"
+    });
+  };
+  const closeEntry = (frame, ms, status, error3, payloads) => {
+    if (frame.openEntryIndex === void 0) return;
+    const entry = entries[frame.openEntryIndex];
+    entry.exitedMs = ms;
+    entry.status = status;
+    if (error3 !== void 0 && entry.error === void 0) entry.error = redactPayloadText({
+      field: "error",
+      redact,
+      stateId: frame.nodeId,
+      text: error3
+    });
+    if (payloads?.cause !== void 0) entry.cause = payloads.cause;
+    if (payloads?.output !== void 0) entry.output = payloads.output;
+    stampChildCount(frame, entry);
+    frame.openEntryIndex = void 0;
+  };
+  const closeUnfinished = (frame, ms, status, fallbackError, cause) => {
+    const result = ensure2(frame.name);
+    contribute(frame.name, status);
+    result.attempts += Math.max(frame.failures, 1);
+    frame.retiredAttempts = Math.max(frame.failures, 1);
+    frame.retiredMs = ms;
+    frame.retiredStatus = status;
+    if (frame.enteredEventId !== void 0) retired.add(frame);
+    const error3 = frame.error ?? fallbackError;
+    if (error3 && !result.error) result.error = error3;
+    const aborted = status === "aborted";
+    closeEntry(frame, ms, status, aborted ? fallbackError : error3, { cause: aborted ? cause : frame.payloadCause ?? cause });
+  };
+  const leafOutcome = (frame) => frame.lastOutcome === "failure" && frame.openEntryIndex === void 0 ? "failed" : "aborted";
+  for (const event of events) {
+    const type = event.type ?? "";
+    const nowMs = eventMs(event);
+    if (type.endsWith("StateEntered")) {
+      const name = enteredName(event);
+      if (!name) continue;
+      if (!startState) startState = name;
+      ensure2(name);
+      const parent = openContainer();
+      const scope = parent ? childScopes?.get(parent.nodeId)?.get(name) ?? "" : "";
+      const nodeId = nodeIdFor(scope, name);
+      const frame = {
+        childStarts: 0,
+        enteredEventId: event.id,
+        enteredMs: toMillis(event.timestamp),
+        enteredType: type,
+        failures: 0,
+        lastEntryIndex: -1,
+        name,
+        nodeId,
+        parent,
+        ...includePayloads ? { payloadInput: capturePayload({
+          field: "input",
+          raw: event.stateEnteredEventDetails?.input,
+          stateId: nodeId
+        }) } : {}
+      };
+      openStack.push(frame);
+      const from = findFromState(event);
+      if (from) {
+        const key = `${from}->${name}`;
+        if (!takenSet.has(key)) {
+          takenSet.add(key);
+          takenEdges.push({
+            from,
+            to: name
+          });
+        }
+      }
+      openEntry(frame, nowMs, 1, from === void 0 ? void 0 : nodeIdFor(scope, from));
+      if (parent && from === void 0) parent.childStarts += 1;
+      if (type === "FailStateEntered") {
+        const result = ensure2(name);
+        contribute(name, "failed");
+        result.attempts = Math.max(result.attempts, 1);
+        closeEntry(frame, nowMs, "failed");
+      }
+      continue;
+    }
+    if (type.endsWith("StateExited")) {
+      const name = exitedName(event);
+      if (!name) continue;
+      const owner = frameForEvent(event);
+      const frameIndex = owner?.name === name ? openStack.indexOf(owner) : findFrameIndex((candidate) => candidate.name === name);
+      const frame = frameIndex >= 0 ? openStack.splice(frameIndex, 1)[0] : void 0;
+      const result = ensure2(name);
+      const exitMs = toMillis(event.timestamp);
+      if (frame?.enteredMs !== void 0 && exitMs !== void 0) result.durationMs = (result.durationMs ?? 0) + (exitMs - frame.enteredMs);
+      const wasCaught = frame?.lastOutcome === "failure";
+      const failures = frame?.failures ?? 0;
+      result.attempts += Math.max(failures + (wasCaught ? 0 : 1), 1);
+      contribute(name, wasCaught ? "caught" : "succeeded");
+      if (frame?.error && !result.error) result.error = frame.error;
+      if (frame) {
+        if (frame.openEntryIndex !== void 0) closeEntry(frame, exitMs ?? nowMs, "succeeded", void 0, { output: includePayloads ? capturePayload({
+          field: "output",
+          raw: event.stateExitedEventDetails?.output,
+          stateId: frame.nodeId
+        }) : void 0 });
+        else if (frame.lastEntryIndex >= 0 && wasCaught) entries[frame.lastEntryIndex].status = "caught";
+      }
+      continue;
+    }
+    const containerFailure = CONTAINER_FAILURE_EVENT_TYPES.get(type);
+    if (containerFailure) {
+      const containerIndex = findFrameIndex((frame) => frame.enteredType === containerFailure.enteredType && !frame.failureClosed);
+      if (containerIndex >= 0) {
+        const eventError = extractError(event);
+        const rawCause = extractCause(event);
+        const causeFor = (frame) => includePayloads ? capturePayload({
+          field: "cause",
+          raw: rawCause,
+          stateId: frame.nodeId
+        }) : void 0;
+        const leaves = openStack.splice(containerIndex + 1);
+        const outcomes = leaves.map(leafOutcome);
+        for (const [index, leaf] of leaves.entries()) closeUnfinished(leaf, nowMs, outcomes[index], eventError, leaf.payloadCause ? void 0 : causeFor(leaf));
+        const failingLeaf = leaves.find((_leaf, index) => outcomes[index] === "failed");
+        const leafError = failingLeaf?.error;
+        const container = openStack[containerIndex];
+        if (!container.failureCounted) {
+          container.failures += 1;
+          container.failureCounted = true;
+        }
+        container.lastOutcome = "failure";
+        container.error = container.error ?? eventError ?? leafError;
+        if (containerFailure.terminal) container.failureClosed = true;
+        closeEntry(container, nowMs, "failed", eventError ?? leafError, { cause: causeFor(container) ?? failingLeaf?.payloadCause });
+      }
+      continue;
+    }
+    const containerAbort = CONTAINER_ABORT_EVENT_TYPES.get(type);
+    if (containerAbort) {
+      const containerIndex = findFrameIndex((frame) => frame.enteredType === containerAbort.enteredType);
+      if (containerIndex >= 0) {
+        const eventError = extractError(event);
+        const rawCause = extractCause(event);
+        const causeFor = (frame) => includePayloads ? capturePayload({
+          field: "cause",
+          raw: rawCause,
+          stateId: frame.nodeId
+        }) : void 0;
+        const container = openStack[containerIndex];
+        const keepContainer = !containerAbort.terminal || leafOutcome(container) === "failed";
+        const closed = openStack.splice(containerIndex + (keepContainer ? 1 : 0));
+        for (const frame of closed) closeUnfinished(frame, nowMs, leafOutcome(frame), eventError, frame.payloadCause ? void 0 : causeFor(frame));
+        if (!containerAbort.terminal) container.failureClosed = true;
+      }
+      continue;
+    }
+    const startedEnteredType = CONTAINER_START_EVENT_TYPES.get(type);
+    if (startedEnteredType) {
+      const containerIndex = findFrameIndex((frame) => frame.enteredType === startedEnteredType);
+      if (containerIndex >= 0) {
+        const container = openStack[containerIndex];
+        container.failureClosed = false;
+        container.failureCounted = false;
+        if (container.openEntryIndex === void 0) openEntry(container, nowMs, container.failures + 1);
+      }
+      continue;
+    }
+    if (type === "ExecutionRedriven") {
+      executionStatus = "running";
+      const allAncestorsRetired = (frame) => {
+        for (let ancestor = frame.parent; ancestor; ancestor = ancestor.parent) if (!retired.has(ancestor)) return false;
+        return true;
+      };
+      resumable = new Map([...retired].filter(allAncestorsRetired).map((frame) => [frame.enteredEventId, frame]));
+      retired.clear();
+      const containers = [...resumable.values()].filter((frame) => CONTAINER_ENTERED_TYPES.has(frame.enteredType)).sort((left, right) => left.enteredEventId - right.enteredEventId);
+      for (const container of containers) resumeFrame(container, nowMs);
+      continue;
+    }
+    const activeFrame = frameForEvent(event) ?? openStack[openStack.length - 1];
+    if (activeFrame !== void 0 && activeFrame.openEntryIndex === void 0 && ATTEMPT_START_EVENT_TYPES.has(type)) openEntry(activeFrame, nowMs, activeFrame.failures + 1);
+    if (TASK_FAILURE_DETAILS.has(type)) {
+      if (activeFrame) {
+        if (activeFrame.openEntryIndex === void 0) openEntry(activeFrame, nowMs, activeFrame.failures + 1);
+        activeFrame.failures += 1;
+        activeFrame.lastOutcome = "failure";
+        activeFrame.error = extractError(event) ?? activeFrame.error;
+        const cause = includePayloads ? capturePayload({
+          field: "cause",
+          raw: extractCause(event),
+          stateId: activeFrame.nodeId
+        }) : void 0;
+        activeFrame.payloadCause = cause ?? activeFrame.payloadCause;
+        closeEntry(activeFrame, nowMs, "failed", extractError(event), { cause });
+      }
+      continue;
+    }
+    if (SUCCESS_EVENT_TYPES.has(type)) {
+      if (activeFrame) {
+        activeFrame.lastOutcome = "success";
+        if (activeFrame.openEntryIndex === void 0) openEntry(activeFrame, nowMs, activeFrame.failures + 1);
+      }
+      continue;
+    }
+    if (type === "ExecutionSucceeded") executionStatus = "succeeded";
+    else if (type === "ExecutionFailed" || type === "ExecutionAborted" || type === "ExecutionTimedOut") {
+      executionStatus = type === "ExecutionFailed" ? "failed" : type === "ExecutionAborted" ? "aborted" : "timedOut";
+      const execError = extractError(event);
+      const unfinishedStatus = type === "ExecutionAborted" ? "aborted" : "failed";
+      const rawExecCause = extractCause(event);
+      for (const frame of openStack) closeUnfinished(frame, nowMs, unfinishedStatus, execError, frame.payloadCause || !includePayloads ? void 0 : capturePayload({
+        field: "cause",
+        raw: rawExecCause,
+        stateId: frame.nodeId
+      }));
+      openStack.length = 0;
+    }
+  }
+  for (const frame of openStack) {
+    const result = ensure2(frame.name);
+    contribute(frame.name, "running");
+    result.attempts += Math.max(frame.failures, 1);
+    if (frame.openEntryIndex !== void 0) stampChildCount(frame, entries[frame.openEntryIndex]);
+  }
+  return {
+    overlay: {
+      executionStatus,
+      startState,
+      states: results,
+      takenEdges
+    },
+    resolver,
+    timeline: {
+      endMs: lastKnownMs,
+      entries,
+      startMs: startMs ?? 0,
+      status: executionStatus
+    }
+  };
+}
+function formatDuration(durationMs) {
+  if (durationMs < 1e3) return `${Math.round(durationMs)}ms`;
+  return `${(durationMs / 1e3).toFixed(durationMs < 1e4 ? 1 : 0)}s`;
+}
+function buildAnnotation(result) {
+  const parts = [];
+  if (result.durationMs !== void 0) parts.push(formatDuration(result.durationMs));
+  if (result.attempts > 1) parts.push(`\xD7${result.attempts}`);
+  return parts.length > 0 ? parts.join(" ") : void 0;
+}
+function summarize(overlay, allStateNames) {
+  const summary2 = {
+    aborted: [],
+    caught: [],
+    failed: [],
+    notReached: [],
+    running: [],
+    succeeded: [],
+    takenEdgeCount: overlay.takenEdges.length
+  };
+  for (const [name, result] of Object.entries(overlay.states)) summary2[result.status].push(name);
+  for (const name of allStateNames) if (!overlay.states[name]) summary2.notReached.push(name);
+  return summary2;
+}
+function computeExecutionWalk(definition, history, includePayloads, redact) {
+  return walkExecutionHistory({
+    definition,
+    events: normalizeEvents(history),
+    includePayloads,
+    redact
+  });
+}
+function byNodeId(byStateName, idsForName) {
+  const result = {};
+  for (const [name, value] of Object.entries(byStateName)) for (const id of idsForName(name)) result[id] = value;
+  return result;
+}
+function computeExecutionStyling(params) {
+  const { callerEdgeOverrides, definition, edges, history, includeExecutionPayloads, nodes: nodes5, redact, summaryStateNames = Object.keys(definition.States) } = params;
+  const walk = computeExecutionWalk(definition, history, includeExecutionPayloads, redact);
+  const { overlay, timeline } = walk;
+  const resolver = walk.resolver ?? buildIdResolver({ definition });
+  const statesByNodeId = byNodeId(overlay.states, resolver.idsForName);
+  const nodeOverrides = {};
+  const nodeAnnotations = {};
+  const statusByNodeId = {};
+  for (const node of nodes5) {
+    const result = statesByNodeId[node.id];
+    const status = result?.status ?? "notReached";
+    nodeOverrides[node.id] = EXECUTION_COLORS[status];
+    statusByNodeId[node.id] = status;
+    if (result) {
+      const annotation = buildAnnotation(result);
+      if (annotation) nodeAnnotations[node.id] = annotation;
+    }
+  }
+  const pairKeys = new Set(edges.map((edge) => `${edge.from}->${edge.to}`));
+  const callerBarePairs = new Set(Object.keys(callerEdgeOverrides ?? {}).filter((key) => pairKeys.has(key)));
+  const takenKeys = new Set(overlay.takenEdges.flatMap((edge) => resolver.idsForName(edge.from).flatMap((from) => resolver.idsForName(edge.to).map((to) => `${from}->${to}`))).filter((key) => pairKeys.has(key)));
+  const edgeOverrides = {};
+  for (const edge of edges) {
+    const pairKey = `${edge.from}->${edge.to}`;
+    if (callerBarePairs.has(pairKey)) continue;
+    const isTaken = edge.type !== "retry" && takenKeys.has(pairKey);
+    edgeOverrides[edge.id] = isTaken ? TAKEN_EDGE_STYLE : UNTAKEN_EDGE_STYLE;
+  }
+  return {
+    edgeOverrides,
+    nodeAnnotations,
+    nodeOverrides,
+    statusByNodeId,
+    summary: {
+      ...summarize(overlay, summaryStateNames),
+      executionStatus: overlay.executionStatus,
+      timeline
+    }
+  };
+}
+function collapsedExecutionClasses(params) {
+  const { nodes: nodes5, plan, styling } = params;
+  const executionClasses = { ...styling.statusByNodeId };
+  const rollUps = rollUpExecutionStatuses({
+    nodes: nodes5,
+    plan,
+    statusByNodeId: styling.statusByNodeId
+  });
+  for (const [id, rollUp] of Object.entries(rollUps)) executionClasses[id] = rollUp.status;
+  const { nodeAnnotations } = styleCollapsedView({
+    executionStatusByNodeId: styling.statusByNodeId,
+    expanded: { nodeAnnotations: styling.nodeAnnotations },
+    nodes: nodes5,
+    plan
+  });
+  return {
+    executionClasses,
+    nodeAnnotations
+  };
+}
+function generateMermaidExecution(params) {
+  const { aslDefinition, history, ...options } = params;
+  const aslObj = parseAslSource({ source: aslDefinition });
+  const mergedOptions = mergeOptions(options);
+  const { edges, nodes: nodes5 } = buildDiagramGraph({
+    definition: aslObj,
+    options: mergedOptions
+  });
+  const styling = computeExecutionStyling({
+    definition: aslObj,
+    edges,
+    history,
+    nodes: nodes5
+  });
+  const { executionClasses, nodeAnnotations } = mergedOptions.collapse ? collapsedExecutionClasses({
+    nodes: nodes5,
+    plan: computeCollapsePlan({
+      collapse: mergedOptions.collapse,
+      edges,
+      nodes: nodes5
+    }),
+    styling
+  }) : {
+    executionClasses: styling.statusByNodeId,
+    nodeAnnotations: styling.nodeAnnotations
+  };
+  const collapsedGraph = applyCollapse({
+    collapse: mergedOptions.collapse,
+    edges,
+    nodes: nodes5
+  });
+  const { code, metadata } = new MermaidRenderer().render({
+    asl: aslObj,
+    customColors: mergedOptions.customColors,
+    edges: collapsedGraph.edges,
+    executionClasses,
+    layout: mergedOptions.layout,
+    nodeAnnotations,
+    nodes: collapsedGraph.nodes,
+    showVariables: mergedOptions.showVariables,
+    theme: mergedOptions.theme
+  });
+  const { executionStatus, timeline, ...statusCounts } = styling.summary;
+  return {
+    code,
+    metadata: {
+      ...statusCounts,
+      edgeCount: metadata.edgeCount,
+      executionStatus,
+      stateCount: metadata.stateCount,
+      timeline
+    }
+  };
+}
 function generateMermaid(params) {
   const { aslDefinition, ...options } = params;
   const aslObj = parseAslSource({ source: aslDefinition });
@@ -69280,6 +69327,7 @@ async function buildExecutionOverlaySection(params) {
     `\u2705 ${metadata.succeeded.length}`,
     `\u274C ${metadata.failed.length}`,
     `\u{1F7E0} ${metadata.caught.length}`,
+    `\u23F9\uFE0F ${metadata.aborted.length}`,
     `\u26AA ${metadata.notReached.length}`
   ].join(" \xB7 ");
   let header = `### \u{1F3AC} Execution overlay \u2014 \`${candidate.filename}\`
@@ -69287,7 +69335,7 @@ async function buildExecutionOverlaySection(params) {
 `;
   header += `> Most recent${mode === "latest-failed" ? " **failed**" : ""} execution: \`${execution.executionArn}\`
 `;
-  header += `> Status: **${execution.status ?? metadata.executionStatus}** \u2014 ${summary2} (succeeded \xB7 failed \xB7 caught \xB7 not reached)
+  header += `> Status: **${execution.status ?? metadata.executionStatus}** \u2014 ${summary2} (succeeded \xB7 failed \xB7 caught \xB7 aborted \xB7 not reached)
 
 `;
   return { section: {
